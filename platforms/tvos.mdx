@@ -1,0 +1,147 @@
+---
+title: tvOS Support
+description: tvOS platform support and considerations for SAMKeychain
+---
+
+## Minimum Deployment Target
+
+tvOS 9.0 or later
+
+## Platform Support
+
+SAMKeychain fully supports tvOS with the same API as iOS. The library is compiled with `TARGET_OS_IPHONE` defined for tvOS, which means it includes iOS-specific features.
+
+## Available Features
+
+### Accessibility Types
+
+tvOS supports the same accessibility type configuration as iOS:
+
+```objc
+// Set accessibility type for all future passwords
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+
+// Get current accessibility type
+CFTypeRef accessibilityType = [SAMKeychain accessibilityType];
+```
+
+<Note>
+For tvOS apps, `kSecAttrAccessibleAfterFirstUnlock` is generally recommended since tvOS devices are typically always-on and may need background access to keychain items.
+</Note>
+
+### Access Groups
+
+Access groups are available on tvOS, allowing keychain sharing between apps:
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"myPassword";
+query.accessGroup = @"TEAM_ID.com.example.shared";
+
+NSError *error = nil;
+[query save:&error];
+```
+
+<Note>
+Like iOS, access groups do not work in the tvOS Simulator and require testing on physical devices.
+</Note>
+
+### iCloud Keychain Synchronization
+
+tvOS supports iCloud Keychain synchronization, which is particularly useful for sharing credentials between your tvOS app and other Apple platforms:
+
+```objc
+// Check if synchronization is available
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyService";
+    query.account = @"user@example.com";
+    query.password = @"myPassword";
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    
+    NSError *error = nil;
+    [query save:&error];
+}
+```
+
+## Basic Usage
+
+Standard keychain operations work identically to iOS:
+
+```objc
+// Save a password
+[SAMKeychain setPassword:@"myPassword" 
+              forService:@"MyService" 
+                 account:@"user@example.com"];
+
+// Retrieve a password
+NSString *password = [SAMKeychain passwordForService:@"MyService" 
+                                             account:@"user@example.com"];
+
+// Delete a password
+[SAMKeychain deletePasswordForService:@"MyService" 
+                              account:@"user@example.com"];
+
+// Get all accounts
+NSArray *accounts = [SAMKeychain accountsForService:@"MyService"];
+```
+
+## tvOS-Specific Considerations
+
+### User Authentication
+
+tvOS apps often have unique authentication flows due to the TV interface. Consider using iCloud Keychain synchronization to share credentials from iOS/macOS apps:
+
+```objc
+// Save on iOS with synchronization enabled
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"com.example.myapp";
+query.account = @"user@example.com";
+query.password = @"myPassword";
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+[query save:nil];
+
+// Retrieve on tvOS
+NSString *password = [SAMKeychain passwordForService:@"com.example.myapp" 
+                                             account:@"user@example.com"];
+```
+
+### Background Accessibility
+
+tvOS apps may run in the background (e.g., for Top Shelf content). Use appropriate accessibility types:
+
+```objc
+// Allow background access
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+```
+
+<Note>
+Avoid using `kSecAttrAccessibleWhenUnlocked` if your app needs to access keychain items while running in the background on tvOS.
+</Note>
+
+## Error Handling
+
+tvOS uses the same error handling as iOS:
+
+```objc
+NSError *error = nil;
+BOOL success = [SAMKeychain setPassword:@"myPassword" 
+                             forService:@"MyService" 
+                                account:@"user@example.com" 
+                                  error:&error];
+
+if (!success) {
+    NSLog(@"Error saving password: %@", error.localizedDescription);
+}
+```
+
+## Cross-Platform Development
+
+When developing for both tvOS and other Apple platforms:
+
+1. **Use synchronization** - Share credentials via iCloud Keychain across devices
+2. **Match service names** - Use the same service identifier across platforms
+3. **Test on devices** - Some features like access groups require physical hardware
+4. **Consider UX differences** - tvOS has unique input constraints that may affect authentication flows

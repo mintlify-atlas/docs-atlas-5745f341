@@ -1,80 +1,428 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get started with SAMKeychain in minutes - from installation to your first keychain operation
 ---
 
-## Get started in three steps
+This guide will walk you through using SAMKeychain to perform common keychain operations. We'll cover storing, retrieving, and deleting passwords using both the simple class methods and the more advanced query interface.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, make sure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+- Installed SAMKeychain (see [Installation](/installation))
+- Imported SAMKeychain in your source file
+- Added the Security framework to your project
+
+## Your First Keychain Operation
+
+Let's start with the most common use case: storing and retrieving a password.
+
+<Steps>
+  <Step title="Import SAMKeychain">
+    Add the import statement to your source file:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```objective-c
+    #import <SAMKeychain/SAMKeychain.h>
+    ```
+  </Step>
+  
+  <Step title="Store a password">
+    Save a password to the keychain using a service name and account:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    ```objective-c
+    NSString *password = @"mySecretPassword123";
+    NSString *serviceName = @"com.yourcompany.yourapp";
+    NSString *account = @"user@example.com";
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    BOOL success = [SAMKeychain setPassword:password 
+                                  forService:serviceName 
+                                     account:account];
+    
+    if (success) {
+        NSLog(@"Password saved successfully!");
+    } else {
+        NSLog(@"Failed to save password");
+    }
+    ```
+    
+    <Tip>
+      Use your app's bundle identifier as the service name to avoid conflicts with other apps.
+    </Tip>
+  </Step>
+  
+  <Step title="Retrieve the password">
+    Get the password back from the keychain:
+    
+    ```objective-c
+    NSString *retrievedPassword = [SAMKeychain passwordForService:serviceName 
+                                                          account:account];
+    
+    if (retrievedPassword) {
+        NSLog(@"Retrieved password: %@", retrievedPassword);
+    } else {
+        NSLog(@"Password not found");
+    }
+    ```
+  </Step>
+  
+  <Step title="Delete the password">
+    Remove the password from the keychain when no longer needed:
+    
+    ```objective-c
+    BOOL deleted = [SAMKeychain deletePasswordForService:serviceName 
+                                                 account:account];
+    
+    if (deleted) {
+        NSLog(@"Password deleted successfully!");
+    } else {
+        NSLog(@"Failed to delete password");
+    }
+    ```
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Error Handling
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+For production code, you should always handle errors properly. Here's how to use the error-aware variants:
 
-### Step 3: Go live
+```objective-c
+NSError *error = nil;
+NSString *serviceName = @"com.yourcompany.yourapp";
+NSString *account = @"user@example.com";
+NSString *password = @"mySecretPassword123";
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+// Save with error handling
+BOOL success = [SAMKeychain setPassword:password 
+                             forService:serviceName 
+                                account:account 
+                                  error:&error];
 
-## Next steps
+if (!success) {
+    if ([error code] == errSecDuplicateItem) {
+        NSLog(@"Password already exists");
+    } else {
+        NSLog(@"Error saving password: %@", [error localizedDescription]);
+    }
+}
 
-Now that you have your docs running, explore these key features:
+// Retrieve with error handling
+NSString *retrievedPassword = [SAMKeychain passwordForService:serviceName 
+                                                      account:account 
+                                                        error:&error];
 
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+if (!retrievedPassword && error) {
+    if ([error code] == errSecItemNotFound) {
+        NSLog(@"Password not found");
+    } else {
+        NSLog(@"Error retrieving password: %@", [error localizedDescription]);
+    }
+}
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Error codes are defined in `SecBase.h` and include values like `errSecItemNotFound`, `errSecDuplicateItem`, and `errSecAuthFailed`. SAMKeychain also defines `SAMKeychainErrorBadArguments` for invalid parameters.
 </Note>
+
+## Setting Accessibility Type
+
+For better security, always set the accessibility type to control when the keychain item can be accessed:
+
+```objective-c
+// Set accessibility type before saving passwords
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+
+// Now save your password
+[SAMKeychain setPassword:@"secret" 
+              forService:@"MyApp" 
+                 account:@"user@example.com"];
+```
+
+<CardGroup cols={2}>
+  <Card title="When Unlocked" icon="lock">
+    **`kSecAttrAccessibleWhenUnlocked`**
+    
+    Recommended for most apps. Data accessible only while device is unlocked.
+  </Card>
+  
+  <Card title="After First Unlock" icon="lock-open">
+    **`kSecAttrAccessibleAfterFirstUnlock`**
+    
+    For background apps. Data accessible after first unlock since boot.
+  </Card>
+  
+  <Card title="Always" icon="unlock">
+    **`kSecAttrAccessibleAlways`**
+    
+    Data always accessible. Not recommended due to security concerns.
+  </Card>
+  
+  <Card title="When Passcode Set" icon="key">
+    **`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`**
+    
+    Requires device passcode. Highest security level.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Never use the default accessibility setting. It's highly insecure. Always explicitly set the accessibility type.
+</Warning>
+
+## Using SAMKeychainQuery
+
+For more control over keychain operations, use `SAMKeychainQuery`:
+
+```objective-c
+NSError *error = nil;
+
+// Create a query
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"com.yourcompany.yourapp";
+query.account = @"user@example.com";
+query.password = @"mySecretPassword123";
+
+// Save
+BOOL success = [query save:&error];
+if (!success) {
+    NSLog(@"Save failed: %@", error);
+}
+
+// Fetch
+SAMKeychainQuery *fetchQuery = [[SAMKeychainQuery alloc] init];
+fetchQuery.service = @"com.yourcompany.yourapp";
+fetchQuery.account = @"user@example.com";
+
+if ([fetchQuery fetch:&error]) {
+    NSLog(@"Password: %@", fetchQuery.password);
+} else {
+    NSLog(@"Fetch failed: %@", error);
+}
+
+// Delete
+BOOL deleted = [fetchQuery deleteItem:&error];
+```
+
+## Storing Binary Data
+
+SAMKeychain can store binary data, not just strings:
+
+```objective-c
+// Create some binary data
+NSData *tokenData = [@"api-token-12345" dataUsingEncoding:NSUTF8StringEncoding];
+
+// Store binary data
+[SAMKeychain setPasswordData:tokenData 
+                  forService:@"MyApp" 
+                     account:@"api-token"];
+
+// Retrieve binary data
+NSData *retrievedData = [SAMKeychain passwordDataForService:@"MyApp" 
+                                                    account:@"api-token"];
+```
+
+## Storing Objects
+
+With `SAMKeychainQuery`, you can store any object that conforms to `NSCoding`:
+
+```objective-c
+// Store a dictionary
+NSDictionary *credentials = @{
+    @"username": @"user@example.com",
+    @"token": @"abc123",
+    @"expiry": @"2026-12-31"
+};
+
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"credentials";
+query.passwordObject = credentials;
+[query save:nil];
+
+// Retrieve the dictionary
+SAMKeychainQuery *fetchQuery = [[SAMKeychainQuery alloc] init];
+fetchQuery.service = @"MyApp";
+fetchQuery.account = @"credentials";
+
+if ([fetchQuery fetch:nil]) {
+    NSDictionary *retrievedCredentials = (NSDictionary *)fetchQuery.passwordObject;
+    NSLog(@"Username: %@", retrievedCredentials[@"username"]);
+}
+```
+
+## Listing Accounts
+
+You can retrieve all accounts stored in the keychain:
+
+```objective-c
+// Get all accounts across all services
+NSArray *allAccounts = [SAMKeychain allAccounts];
+for (NSDictionary *account in allAccounts) {
+    NSLog(@"Account: %@", account[kSAMKeychainAccountKey]);
+    NSLog(@"Service: %@", account[kSAMKeychainWhereKey]);
+}
+
+// Get accounts for a specific service
+NSArray *accounts = [SAMKeychain accountsForService:@"com.yourcompany.yourapp"];
+for (NSDictionary *account in accounts) {
+    NSLog(@"Account: %@", account[kSAMKeychainAccountKey]);
+}
+```
+
+Available dictionary keys:
+- `kSAMKeychainAccountKey` - Account name
+- `kSAMKeychainWhereKey` - Service name  
+- `kSAMKeychainLabelKey` - Item label
+- `kSAMKeychainCreatedAtKey` - Creation date
+- `kSAMKeychainLastModifiedKey` - Last modified date
+
+## Complete Example
+
+Here's a complete example of a login manager using SAMKeychain:
+
+```objective-c
+#import <SAMKeychain/SAMKeychain.h>
+
+@interface LoginManager : NSObject
++ (void)saveUsername:(NSString *)username password:(NSString *)password;
++ (NSDictionary *)retrieveCredentials;
++ (void)clearCredentials;
+@end
+
+@implementation LoginManager
+
+static NSString *const kServiceName = @"com.yourcompany.yourapp";
+static NSString *const kAccountKey = @"currentUser";
+
++ (void)initialize {
+    // Set accessibility type once
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+}
+
++ (void)saveUsername:(NSString *)username password:(NSString *)password {
+    NSError *error = nil;
+    
+    // Save password
+    BOOL success = [SAMKeychain setPassword:password 
+                                  forService:kServiceName 
+                                     account:username 
+                                       error:&error];
+    
+    if (success) {
+        // Save username to UserDefaults for quick access
+        [[NSUserDefaults standardUserDefaults] setObject:username forKey:@"username"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        NSLog(@"Credentials saved successfully");
+    } else {
+        NSLog(@"Failed to save credentials: %@", [error localizedDescription]);
+    }
+}
+
++ (NSDictionary *)retrieveCredentials {
+    NSString *username = [[NSUserDefaults standardUserDefaults] stringForKey:@"username"];
+    
+    if (!username) {
+        return nil;
+    }
+    
+    NSError *error = nil;
+    NSString *password = [SAMKeychain passwordForService:kServiceName 
+                                                 account:username 
+                                                   error:&error];
+    
+    if (password) {
+        return @{@"username": username, @"password": password};
+    } else {
+        NSLog(@"Failed to retrieve password: %@", [error localizedDescription]);
+        return nil;
+    }
+}
+
++ (void)clearCredentials {
+    NSString *username = [[NSUserDefaults standardUserDefaults] stringForKey:@"username"];
+    
+    if (username) {
+        NSError *error = nil;
+        [SAMKeychain deletePasswordForService:kServiceName 
+                                      account:username 
+                                        error:&error];
+        
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"username"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        
+        NSLog(@"Credentials cleared");
+    }
+}
+
+@end
+```
+
+Usage:
+
+```objective-c
+// Save credentials
+[LoginManager saveUsername:@"user@example.com" password:@"secret123"];
+
+// Retrieve credentials
+NSDictionary *credentials = [LoginManager retrieveCredentials];
+if (credentials) {
+    NSLog(@"Logged in as: %@", credentials[@"username"]);
+}
+
+// Clear credentials on logout
+[LoginManager clearCredentials];
+```
+
+## Next Steps
+
+Now that you understand the basics, explore more advanced features:
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="book" href="/api/samkeychain">
+    Complete API documentation for all methods and classes
+  </Card>
+  
+  <Card title="Advanced Queries" icon="graduation-cap" href="/guides/advanced-queries">
+    Learn about access groups, synchronization, and more
+  </Card>
+</CardGroup>
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Storing OAuth Tokens">
+    ```objective-c
+    NSString *accessToken = @"ya29.a0AfH6SMB...";
+    [SAMKeychain setPassword:accessToken 
+                  forService:@"com.yourapp.oauth" 
+                     account:@"google-access-token"];
+    ```
+  </Accordion>
+  
+  <Accordion title="Storing API Keys">
+    ```objective-c
+    [SAMKeychain setPassword:@"sk_live_abc123" 
+                  forService:@"com.yourapp" 
+                     account:@"stripe-api-key"];
+    ```
+  </Accordion>
+  
+  <Accordion title="Checking if Password Exists">
+    ```objective-c
+    NSString *password = [SAMKeychain passwordForService:@"MyApp" 
+                                                 account:@"user@example.com"];
+    if (password) {
+        NSLog(@"Password exists");
+    } else {
+        NSLog(@"No password found");
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Updating an Existing Password">
+    ```objective-c
+    // SAMKeychain automatically updates if a password already exists
+    [SAMKeychain setPassword:@"newPassword" 
+                  forService:@"MyApp" 
+                     account:@"user@example.com"];
+    ```
+  </Accordion>
+</AccordionGroup>

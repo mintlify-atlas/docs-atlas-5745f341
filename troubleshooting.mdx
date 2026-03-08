@@ -1,0 +1,409 @@
+---
+title: "Troubleshooting"
+description: "Common issues, debugging techniques, and error handling for SAMKeychain"
+---
+
+## Overview
+
+This guide covers common keychain issues and how to resolve them. Always check error codes and messages when debugging keychain operations.
+
+<Warning>
+**Important**: Always use the error parameter versions of SAMKeychain methods in production code. The non-error versions silently fail, making debugging difficult.
+</Warning>
+
+## Common Issues
+
+### Password Not Found (errSecItemNotFound)
+
+**Error Code:** `-25300` (`errSecItemNotFound`)
+
+**Symptoms:**
+- `passwordForService:account:` returns `nil`
+- Error domain: `com.samsoffes.samkeychain`
+
+**Common Causes:**
+
+<AccordionGroup>
+  <Accordion title="Service or account name mismatch">
+    The most common cause - typos or inconsistent naming.
+
+    ```objectivec
+    // ❌ Wrong: Inconsistent naming
+    [SAMKeychain setPassword:@"secret" forService:@"MyApp" account:@"user"];
+    NSString *pw = [SAMKeychain passwordForService:@"myapp" account:@"user"]; // nil!
+    
+    // ✅ Correct: Exact match required
+    [SAMKeychain setPassword:@"secret" forService:@"MyApp" account:@"user"];
+    NSString *pw = [SAMKeychain passwordForService:@"MyApp" account:@"user"]; // "secret"
+    ```
+
+    **Solution:** Use constants for service and account names:
+
+    ```objectivec
+    static NSString *const kKeychainService = @"com.mycompany.MyApp";
+    static NSString *const kKeychainAccount = @"user";
+    ```
+  </Accordion>
+
+  <Accordion title="Access group mismatch">
+    When using access groups to share keychain data between apps, all apps must use the same group.
+
+    ```objectivec
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"SharedService";
+    query.account = @"user";
+    query.accessGroup = @"TEAMID.com.company.SharedKeychain"; // Must match exactly
+    query.password = @"secret";
+    
+    NSError *error = nil;
+    if (![query save:&error]) {
+        NSLog(@"Save failed: %@", error);
+    }
+    ```
+
+    **Note:** Access groups don't work in the iOS Simulator.
+  </Accordion>
+
+  <Accordion title="Synchronization mode mismatch">
+    Items saved with synchronization enabled won't be found when searching without it.
+
+    ```objectivec
+    // Saved with sync enabled
+    SAMKeychainQuery *saveQuery = [[SAMKeychainQuery alloc] init];
+    saveQuery.service = @"MyApp";
+    saveQuery.account = @"user";
+    saveQuery.password = @"secret";
+    saveQuery.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    [saveQuery save:nil];
+    
+    // Won't find it without specifying sync mode
+    SAMKeychainQuery *fetchQuery = [[SAMKeychainQuery alloc] init];
+    fetchQuery.service = @"MyApp";
+    fetchQuery.account = @"user";
+    fetchQuery.synchronizationMode = SAMKeychainQuerySynchronizationModeAny; // Use Any or Yes
+    [fetchQuery fetch:nil];
+    ```
+  </Accordion>
+
+  <Accordion title="App reinstallation or uninstallation">
+    Keychain items may persist after app deletion, but this behavior varies:
+
+    - **iOS**: Keychain items usually deleted on uninstall
+    - **iOS (TestFlight/Enterprise)**: Items may persist
+    - **macOS**: Items always persist after app deletion
+
+    **For development:** Manually delete test items:
+
+    ```objectivec
+    [SAMKeychain deletePasswordForService:@"MyApp" account:@"testUser"];
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Save Operation Fails (SAMKeychainErrorBadArguments)
+
+**Error Code:** `-1001` (`SAMKeychainErrorBadArguments`)
+
+**Cause:** Missing required parameters (service, account, or password).
+
+```objectivec
+// ❌ Wrong: Missing password
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user";
+// query.password not set!
+NSError *error = nil;
+[query save:&error]; // Returns NO, error code -1001
+
+// ✅ Correct: All required fields set
+query.password = @"myPassword";
+[query save:&error]; // Success
+```
+
+<Note>
+The convenience methods on `SAMKeychain` validate parameters, but `SAMKeychainQuery` requires all fields to be set manually.
+</Note>
+
+### Interaction Not Allowed (errSecInteractionNotAllowed)
+
+**Error Code:** `-25308` (`errSecInteractionNotAllowed`)
+
+**Symptoms:**
+- Save or fetch fails unexpectedly
+- Error occurs when device is locked
+
+**Cause:** Attempting to access keychain when device is locked, but accessibility type requires unlock.
+
+```objectivec
+// Item was saved with kSecAttrAccessibleWhenUnlocked
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+[SAMKeychain setPassword:@"secret" forService:@"MyApp" account:@"user"];
+
+// Later, trying to access while device is locked fails
+// Background task runs while device locked:
+NSString *password = [SAMKeychain passwordForService:@"MyApp" account:@"user"];
+// Returns nil with errSecInteractionNotAllowed
+```
+
+**Solution:** Use `kSecAttrAccessibleAfterFirstUnlock` for background access:
+
+```objectivec
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+```
+
+### Security Framework Errors
+
+SAMKeychain passes through Security framework error codes. Common ones:
+
+| Error Code | Constant | Meaning |
+|-----------|----------|----------|
+| `-25300` | `errSecItemNotFound` | Item doesn't exist in keychain |
+| `-25299` | `errSecDuplicateItem` | Item already exists (shouldn't happen with SAMKeychain) |
+| `-25308` | `errSecInteractionNotAllowed` | Device locked or app doesn't have permission |
+| `-25293` | `errSecAuthFailed` | Authentication failed (Touch ID/Face ID) |
+| `-34018` | (undocumented) | Known iOS keychain bug - see below |
+
+<Warning>
+**iOS Keychain Bug -34018**: This is a known iOS system bug that can occur on devices, especially during development. It's usually transient.
+
+**Workarounds:**
+1. Add keychain entitlements to your app
+2. Retry the operation after a short delay
+3. File a radar with Apple if persistent
+
+See: [Apple Developer Forums](https://developer.apple.com/forums/thread/4743)
+</Warning>
+
+## Debugging Techniques
+
+### Enable Detailed Error Logging
+
+Always use the error parameter and log details:
+
+```objectivec
+NSError *error = nil;
+NSString *password = [SAMKeychain passwordForService:@"MyApp" 
+                                             account:@"user" 
+                                               error:&error];
+if (!password) {
+    if (error) {
+        NSLog(@"Keychain error:");
+        NSLog(@"  Domain: %@", error.domain);
+        NSLog(@"  Code: %ld", (long)error.code);
+        NSLog(@"  Description: %@", error.localizedDescription);
+        NSLog(@"  User Info: %@", error.userInfo);
+    } else {
+        NSLog(@"Password not found, but no error returned");
+    }
+}
+```
+
+### List All Keychain Items
+
+See what's actually stored in the keychain:
+
+```objectivec
+// List all keychain items
+NSError *error = nil;
+NSArray *accounts = [SAMKeychain allAccounts:&error];
+
+NSLog(@"Found %lu keychain items:", (unsigned long)accounts.count);
+for (NSDictionary *account in accounts) {
+    NSLog(@"  Service: %@, Account: %@", 
+          account[@"svce"], // kSAMKeychainWhereKey
+          account[@"acct"]); // kSAMKeychainAccountKey
+}
+
+// List items for specific service
+NSArray *serviceAccounts = [SAMKeychain accountsForService:@"MyApp" error:&error];
+NSLog(@"Items for MyApp service: %@", serviceAccounts);
+```
+
+### Verify Access Group Configuration
+
+Access groups require proper entitlements:
+
+```objectivec
+// Check if access group is available
+#ifdef SAMKEYCHAIN_ACCESS_GROUP_AVAILABLE
+    #if TARGET_IPHONE_SIMULATOR
+        NSLog(@"⚠️ Access groups don't work in iOS Simulator");
+    #else
+        NSLog(@"✅ Access groups available");
+    #endif
+#else
+    NSLog(@"❌ Access groups not available at compile time");
+#endif
+```
+
+**Entitlements file:**
+
+```xml YourApp.entitlements
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.company.SharedKeychain</string>
+    </array>
+</dict>
+</plist>
+```
+
+### Test Synchronization Availability
+
+```objectivec
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    if ([SAMKeychainQuery isSynchronizationAvailable]) {
+        NSLog(@"✅ iCloud Keychain sync available");
+    } else {
+        NSLog(@"❌ iCloud Keychain sync NOT available");
+    }
+#else
+    NSLog(@"❌ Synchronization not available at compile time");
+#endif
+```
+
+## Handling Specific Error Codes
+
+### Robust Error Handling Pattern
+
+```objectivec
+- (NSString *)retrievePasswordWithRetry {
+    NSError *error = nil;
+    NSString *password = [SAMKeychain passwordForService:@"MyApp" 
+                                                 account:@"user" 
+                                                   error:&error];
+    
+    if (!password && error) {
+        switch (error.code) {
+            case errSecItemNotFound:
+                // Password doesn't exist - normal for first launch
+                NSLog(@"No saved password found");
+                return nil;
+                
+            case errSecInteractionNotAllowed:
+                // Device is locked
+                NSLog(@"Device is locked, cannot access keychain");
+                return nil;
+                
+            case -34018:
+                // Known iOS bug - retry once
+                NSLog(@"iOS keychain bug, retrying...");
+                [NSThread sleepForTimeInterval:0.1];
+                return [SAMKeychain passwordForService:@"MyApp" account:@"user"];
+                
+            default:
+                // Unexpected error
+                NSLog(@"Unexpected keychain error: %@", error);
+                return nil;
+        }
+    }
+    
+    return password;
+}
+```
+
+## Platform-Specific Issues
+
+### macOS-Specific
+
+<AccordionGroup>
+  <Accordion title="Keychain item deletion requires workaround">
+    macOS has a quirk where `SecItemDelete` may not delete items created by a different version of your app.
+
+    SAMKeychain handles this automatically in `SAMKeychainQuery.m`:216-221:
+
+    ```objectivec
+    // Uses SecItemCopyMatching + SecKeychainItemDelete on macOS
+    // instead of just SecItemDelete
+    ```
+
+    No action needed - this is handled internally.
+  </Accordion>
+
+  <Accordion title="Keychain persists after uninstall">
+    Unlike iOS, macOS never deletes keychain items when you uninstall an app.
+
+    **For testing:** Manually delete test items or use Keychain Access.app:
+    1. Open **Keychain Access** (Applications > Utilities)
+    2. Search for your service name
+    3. Delete test items manually
+  </Accordion>
+</AccordionGroup>
+
+### iOS Simulator Limitations
+
+- **Access Groups**: Don't work in simulator
+- **Touch ID/Face ID**: Not available
+- **Keychain Sync**: Not available
+
+<Note>
+Always test keychain functionality on real devices, especially when using access groups or synchronization.
+</Note>
+
+### watchOS Considerations
+
+- Limited keychain capacity
+- No background access while watch is locked
+- Use `kSecAttrAccessibleAfterFirstUnlock` for watch complications
+
+## Performance Issues
+
+### Slow Keychain Operations
+
+Keychain operations should be fast (less than 10ms), but can be slow if:
+
+1. **Device is encrypted and locked** - Operations fail or timeout
+2. **Too many queries** - Cache passwords in memory when appropriate:
+
+```objectivec
+// ❌ Bad: Query keychain repeatedly
+- (void)someMethod {
+    NSString *token = [SAMKeychain passwordForService:@"API" account:@"token"];
+    // Use token
+}
+
+// ✅ Better: Cache in memory
+@property (nonatomic, strong) NSString *cachedToken;
+
+- (NSString *)token {
+    if (!_cachedToken) {
+        _cachedToken = [SAMKeychain passwordForService:@"API" account:@"token"];
+    }
+    return _cachedToken;
+}
+```
+
+3. **Synchronous calls on main thread** - Keychain is synchronous, so don't call from main thread if concerned about UI responsiveness:
+
+```objectivec
+// Perform keychain operations on background thread if needed
+dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    NSString *password = [SAMKeychain passwordForService:@"MyApp" account:@"user"];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Update UI with password
+    });
+});
+```
+
+## Getting More Help
+
+<CardGroup cols={2}>
+  <Card title="FAQ" icon="circle-question" href="/faq">
+    Common questions and answers
+  </Card>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/soffes/SAMKeychain/issues">
+    Report bugs or search existing issues
+  </Card>
+</CardGroup>
+
+<Tip>
+When reporting issues, always include:
+- Error code and message
+- Platform and OS version (iOS 17.5, macOS 14.0, etc.)
+- Whether it occurs on device or simulator
+- Code snippet that reproduces the issue
+</Tip>

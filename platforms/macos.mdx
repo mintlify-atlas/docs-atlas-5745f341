@@ -1,0 +1,124 @@
+---
+title: macOS Support
+description: macOS-specific features and considerations for SAMKeychain
+---
+
+## Minimum Deployment Target
+
+macOS 10.8 or later
+
+## Platform Differences
+
+### No Accessibility Types
+
+Unlike iOS, macOS does not support the `accessibilityType` methods. These methods are wrapped in `#if __IPHONE_4_0 && TARGET_OS_IPHONE` directives and are not available on macOS.
+
+```objc
+// These methods are NOT available on macOS:
+// [SAMKeychain setAccessibilityType:...];  // iOS only
+// [SAMKeychain accessibilityType];         // iOS only
+```
+
+### Access Groups
+
+Access groups are available on macOS 10.9 and later, allowing keychain sharing between apps from the same developer.
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"myPassword";
+query.accessGroup = @"TEAM_ID.com.example.shared";
+
+NSError *error = nil;
+[query save:&error];
+```
+
+### iCloud Keychain Synchronization
+
+iCloud Keychain synchronization is available on macOS 10.9 and later.
+
+```objc
+// Check if synchronization is available at runtime
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyService";
+    query.account = @"user@example.com";
+    query.password = @"myPassword";
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    
+    NSError *error = nil;
+    [query save:&error];
+}
+```
+
+<Note>
+The runtime check uses `NSFoundationVersionNumber10_8_4` as the threshold. Items created on macOS 10.9+ can sync with iOS 7.0+ devices when synchronization is enabled.
+</Note>
+
+### Delete Operation Behavior
+
+macOS has special handling for delete operations due to platform-specific keychain behavior.
+
+<Note>
+On macOS, `SecItemDelete` will not delete a key created in a different app, nor in a different version of the same app. This was true in OS X 10.6 and later versions.
+
+SAMKeychain works around this by using `SecItemCopyMatching` and `SecKeychainItemDelete` instead of the standard `SecItemDelete`. See SAMKeychainQuery.m:80-106 for implementation details.
+</Note>
+
+```objc
+// Delete operations work the same from the API perspective,
+// but use a different implementation on macOS
+BOOL success = [SAMKeychain deletePasswordForService:@"MyService" 
+                                             account:@"user@example.com"];
+```
+
+## Error Handling
+
+macOS uses `SecCopyErrorMessageString` for error messages, which provides more detailed system-level error information compared to the custom error messages used on iOS.
+
+```objc
+NSError *error = nil;
+BOOL success = [SAMKeychain setPassword:@"myPassword" 
+                             forService:@"MyService" 
+                                account:@"user@example.com" 
+                                  error:&error];
+
+if (!success) {
+    NSLog(@"Error: %@", error.localizedDescription);
+    // macOS error messages come from SecCopyErrorMessageString
+}
+```
+
+See SAMKeychainQuery.m:303-306 for the macOS error handling implementation.
+
+## Basic Usage
+
+The standard keychain operations work the same as on other platforms:
+
+```objc
+// Save a password
+[SAMKeychain setPassword:@"myPassword" 
+              forService:@"MyService" 
+                 account:@"user@example.com"];
+
+// Retrieve a password
+NSString *password = [SAMKeychain passwordForService:@"MyService" 
+                                             account:@"user@example.com"];
+
+// Delete a password
+[SAMKeychain deletePasswordForService:@"MyService" 
+                              account:@"user@example.com"];
+
+// Get all accounts for a service
+NSArray *accounts = [SAMKeychain accountsForService:@"MyService"];
+```
+
+## Cross-Platform Considerations
+
+When building apps for both iOS and macOS:
+
+1. **Don't use accessibility types** - These are iOS-only
+2. **Check synchronization availability** - Different OS versions have different requirements
+3. **Test delete operations** - macOS has different behavior
+4. **Access groups** - Available on both platforms but with different minimum OS versions

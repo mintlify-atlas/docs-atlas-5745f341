@@ -1,0 +1,485 @@
+---
+title: "Managing Accounts"
+description: "List, filter, update, and delete keychain accounts"
+---
+
+## Overview
+
+SAMKeychain provides comprehensive methods for managing keychain accounts. This guide covers how to list all accounts, filter by service, update passwords, and delete items from the keychain.
+
+## Listing All Accounts
+
+Retrieve all keychain items accessible to your app:
+
+```objectivec
+NSArray<NSDictionary *> *accounts = [SAMKeychain allAccounts];
+
+for (NSDictionary *accountInfo in accounts) {
+    NSString *account = accountInfo[kSAMKeychainAccountKey];
+    NSString *service = accountInfo[kSAMKeychainWhereKey];
+    
+    NSLog(@"Account: %@, Service: %@", account, service);
+}
+```
+
+<Note>
+The `allAccounts` method returns an array of dictionaries containing metadata about each keychain item. Passwords are not included in the results.
+</Note>
+
+## Available Metadata Keys
+
+Each account dictionary contains the following keys:
+
+| Key | Description | Example |
+|-----|-------------|---------|
+| `kSAMKeychainAccountKey` | Account identifier | `"user@example.com"` |
+| `kSAMKeychainWhereKey` | Service name | `"com.company.MyApp"` |
+| `kSAMKeychainLabelKey` | Item label | `"MyApp Account"` |
+| `kSAMKeychainCreatedAtKey` | Creation timestamp | `"2024-03-08T10:30:00Z"` |
+| `kSAMKeychainLastModifiedKey` | Last modified timestamp | `"2024-03-08T14:22:00Z"` |
+| `kSAMKeychainDescriptionKey` | Item description | `"User credentials"` |
+
+```objectivec
+NSArray *accounts = [SAMKeychain allAccounts];
+
+for (NSDictionary *accountInfo in accounts) {
+    NSString *account = accountInfo[kSAMKeychainAccountKey];
+    NSString *service = accountInfo[kSAMKeychainWhereKey];
+    NSString *label = accountInfo[kSAMKeychainLabelKey];
+    NSString *created = accountInfo[kSAMKeychainCreatedAtKey];
+    
+    NSLog(@"Account: %@", account);
+    NSLog(@"  Service: %@", service);
+    NSLog(@"  Label: %@", label);
+    NSLog(@"  Created: %@", created);
+}
+```
+
+## Filtering Accounts by Service
+
+Retrieve only accounts for a specific service:
+
+```objectivec
+NSString *serviceName = @"com.company.MyApp";
+NSArray<NSDictionary *> *accounts = [SAMKeychain accountsForService:serviceName];
+
+NSLog(@"Found %lu accounts for %@", (unsigned long)accounts.count, serviceName);
+
+for (NSDictionary *accountInfo in accounts) {
+    NSString *account = accountInfo[kSAMKeychainAccountKey];
+    NSLog(@"  - %@", account);
+}
+```
+
+### Listing All Services
+
+To get a list of all services with saved credentials:
+
+```objectivec
+- (NSArray<NSString *> *)allServices {
+    NSArray *accounts = [SAMKeychain allAccounts];
+    NSMutableSet *services = [NSMutableSet set];
+    
+    for (NSDictionary *accountInfo in accounts) {
+        NSString *service = accountInfo[kSAMKeychainWhereKey];
+        if (service) {
+            [services addObject:service];
+        }
+    }
+    
+    return [services allObjects];
+}
+```
+
+## Updating Passwords
+
+To update a password, simply call `setPassword:forService:account:` with the same service and account:
+
+```objectivec
+// Update existing password
+BOOL success = [SAMKeychain setPassword:@"newPassword123"
+                             forService:@"com.company.MyApp"
+                                account:@"user@example.com"];
+
+if (success) {
+    NSLog(@"Password updated successfully");
+}
+```
+
+SAMKeychain automatically:
+1. Checks if an item exists with the given service and account
+2. Updates the password if it exists
+3. Creates a new item if it doesn't exist
+
+<Tip>
+You don't need to delete the old password before saving a new one. SAMKeychain handles the update automatically.
+</Tip>
+
+## Deleting Accounts
+
+### Deleting a Single Account
+
+```objectivec
+BOOL success = [SAMKeychain deletePasswordForService:@"com.company.MyApp"
+                                            account:@"user@example.com"];
+
+if (success) {
+    NSLog(@"Account deleted");
+} else {
+    NSLog(@"Failed to delete account");
+}
+```
+
+### Deleting with Error Handling
+
+```objectivec
+NSError *error = nil;
+BOOL success = [SAMKeychain deletePasswordForService:@"com.company.MyApp"
+                                            account:@"user@example.com"
+                                              error:&error];
+
+if (success) {
+    NSLog(@"Account deleted successfully");
+} else if (error) {
+    if (error.code == errSecItemNotFound) {
+        NSLog(@"Account doesn't exist");
+    } else {
+        NSLog(@"Error deleting account: %@", error.localizedDescription);
+    }
+}
+```
+
+### Deleting All Accounts for a Service
+
+```objectivec
+- (void)deleteAllAccountsForService:(NSString *)serviceName {
+    NSError *error = nil;
+    NSArray *accounts = [SAMKeychain accountsForService:serviceName error:&error];
+    
+    if (error) {
+        NSLog(@"Error fetching accounts: %@", error);
+        return;
+    }
+    
+    for (NSDictionary *accountInfo in accounts) {
+        NSString *account = accountInfo[kSAMKeychainAccountKey];
+        
+        BOOL deleted = [SAMKeychain deletePasswordForService:serviceName
+                                                     account:account
+                                                       error:&error];
+        
+        if (deleted) {
+            NSLog(@"Deleted account: %@", account);
+        } else {
+            NSLog(@"Failed to delete %@: %@", account, error);
+        }
+    }
+}
+```
+
+### Deleting All Accounts
+
+```objectivec
+- (void)deleteAllKeyChainItems {
+    NSArray *accounts = [SAMKeychain allAccounts];
+    
+    for (NSDictionary *accountInfo in accounts) {
+        NSString *service = accountInfo[kSAMKeychainWhereKey];
+        NSString *account = accountInfo[kSAMKeychainAccountKey];
+        
+        [SAMKeychain deletePasswordForService:service account:account];
+    }
+    
+    NSLog(@"Deleted %lu keychain items", (unsigned long)accounts.count);
+}
+```
+
+<Warning>
+Deleting keychain items is permanent and cannot be undone. Always confirm with the user before deleting credentials.
+</Warning>
+
+## Common Use Cases
+
+### Account Switcher
+
+```objectivec
+- (void)showAccountSwitcher {
+    NSString *serviceName = @"com.company.MyApp";
+    NSArray *accounts = [SAMKeychain accountsForService:serviceName];
+    
+    UIAlertController *alert = [UIAlertController 
+        alertControllerWithTitle:@"Switch Account"
+                         message:@"Select an account"
+                  preferredStyle:UIAlertControllerStyleActionSheet];
+    
+    // Add option for each saved account
+    for (NSDictionary *accountInfo in accounts) {
+        NSString *account = accountInfo[kSAMKeychainAccountKey];
+        
+        UIAlertAction *action = [UIAlertAction 
+            actionWithTitle:account
+                      style:UIAlertActionStyleDefault
+                    handler:^(UIAlertAction *action) {
+                        [self switchToAccount:account];
+                    }];
+        
+        [alert addAction:action];
+    }
+    
+    // Add cancel button
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)switchToAccount:(NSString *)account {
+    NSString *password = [SAMKeychain passwordForService:@"com.company.MyApp"
+                                                 account:account];
+    
+    if (password) {
+        [self loginWithAccount:account password:password];
+    }
+}
+```
+
+### Checking for Existing Accounts
+
+```objectivec
+- (BOOL)hasAnyAccounts {
+    NSArray *accounts = [SAMKeychain accountsForService:@"com.company.MyApp"];
+    return accounts.count > 0;
+}
+
+- (BOOL)hasAccount:(NSString *)account {
+    NSArray *accounts = [SAMKeychain accountsForService:@"com.company.MyApp"];
+    
+    for (NSDictionary *accountInfo in accounts) {
+        NSString *savedAccount = accountInfo[kSAMKeychainAccountKey];
+        if ([savedAccount isEqualToString:account]) {
+            return YES;
+        }
+    }
+    
+    return NO;
+}
+```
+
+### Migrating Service Names
+
+```objectivec
+- (void)migrateFromOldServiceToNewService {
+    NSString *oldService = @"MyApp";
+    NSString *newService = @"com.company.MyApp";
+    
+    // Get all accounts from old service
+    NSArray *accounts = [SAMKeychain accountsForService:oldService];
+    
+    for (NSDictionary *accountInfo in accounts) {
+        NSString *account = accountInfo[kSAMKeychainAccountKey];
+        
+        // Get password from old service
+        NSString *password = [SAMKeychain passwordForService:oldService
+                                                     account:account];
+        
+        if (password) {
+            // Save to new service
+            [SAMKeychain setPassword:password
+                          forService:newService
+                             account:account];
+            
+            // Delete from old service
+            [SAMKeychain deletePasswordForService:oldService
+                                          account:account];
+            
+            NSLog(@"Migrated account: %@", account);
+        }
+    }
+}
+```
+
+### Password Change Flow
+
+```objectivec
+- (void)changePasswordForCurrentUser {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Change Password"
+                         message:@"Enter your new password"
+                  preferredStyle:UIAlertControllerStyleAlert];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.placeholder = @"New Password";
+        textField.secureTextEntry = YES;
+    }];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.placeholder = @"Confirm Password";
+        textField.secureTextEntry = YES;
+    }];
+    
+    UIAlertAction *changeAction = [UIAlertAction
+        actionWithTitle:@"Change"
+                  style:UIAlertActionStyleDefault
+                handler:^(UIAlertAction *action) {
+                    UITextField *newPassword = alert.textFields[0];
+                    UITextField *confirmPassword = alert.textFields[1];
+                    
+                    if ([newPassword.text isEqualToString:confirmPassword.text]) {
+                        [self updatePassword:newPassword.text];
+                    } else {
+                        [self showError:@"Passwords don't match"];
+                    }
+                }];
+    
+    [alert addAction:changeAction];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)updatePassword:(NSString *)newPassword {
+    NSString *currentUser = self.currentUsername;
+    NSError *error = nil;
+    
+    BOOL success = [SAMKeychain setPassword:newPassword
+                                 forService:@"com.company.MyApp"
+                                    account:currentUser
+                                      error:&error];
+    
+    if (success) {
+        [self showSuccess:@"Password updated successfully"];
+    } else {
+        [self showError:[NSString stringWithFormat:@"Failed to update: %@",
+                        error.localizedDescription]];
+    }
+}
+```
+
+### Account Cleanup on Logout
+
+```objectivec
+- (void)logoutWithOptions:(LogoutOptions)options {
+    NSString *currentAccount = self.currentUsername;
+    
+    if (options & LogoutOptionRememberAccount) {
+        // Keep password in keychain for next login
+        NSLog(@"Password saved for %@", currentAccount);
+    } else if (options & LogoutOptionForgetAccount) {
+        // Remove password from keychain
+        BOOL deleted = [SAMKeychain deletePasswordForService:@"com.company.MyApp"
+                                                     account:currentAccount];
+        
+        if (deleted) {
+            NSLog(@"Password removed for %@", currentAccount);
+        }
+    }
+    
+    // Clear session
+    [self clearSession];
+    [self showLoginScreen];
+}
+```
+
+### Building an Account List UI
+
+```objectivec
+- (NSArray<AccountViewModel *> *)savedAccounts {
+    NSMutableArray *viewModels = [NSMutableArray array];
+    
+    NSArray *accounts = [SAMKeychain accountsForService:@"com.company.MyApp"];
+    
+    for (NSDictionary *accountInfo in accounts) {
+        AccountViewModel *vm = [[AccountViewModel alloc] init];
+        vm.username = accountInfo[kSAMKeychainAccountKey];
+        vm.label = accountInfo[kSAMKeychainLabelKey];
+        vm.lastModified = accountInfo[kSAMKeychainLastModifiedKey];
+        
+        // Check if this is the current account
+        vm.isCurrent = [vm.username isEqualToString:self.currentUsername];
+        
+        [viewModels addObject:vm];
+    }
+    
+    return viewModels;
+}
+```
+
+## Best Practices
+
+### Confirm Before Deleting
+
+```objectivec
+- (void)deleteAccount:(NSString *)account {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Delete Account"
+                         message:[NSString stringWithFormat:
+                                 @"Remove saved password for %@?", account]
+                  preferredStyle:UIAlertControllerStyleAlert];
+    
+    UIAlertAction *deleteAction = [UIAlertAction
+        actionWithTitle:@"Delete"
+                  style:UIAlertActionStyleDestructive
+                handler:^(UIAlertAction *action) {
+                    [SAMKeychain deletePasswordForService:@"com.company.MyApp"
+                                                  account:account];
+                }];
+    
+    [alert addAction:deleteAction];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
+}
+```
+
+### Handle Empty Results
+
+```objectivec
+- (void)displaySavedAccounts {
+    NSArray *accounts = [SAMKeychain accountsForService:@"com.company.MyApp"];
+    
+    if (accounts.count == 0) {
+        [self showEmptyState:@"No saved accounts"];
+    } else {
+        [self showAccountList:accounts];
+    }
+}
+```
+
+### Use Consistent Service Names
+
+```objectivec
+// Define service name as a constant
+static NSString * const kMyAppKeychainService = @"com.company.MyApp";
+
+- (NSArray *)savedAccounts {
+    return [SAMKeychain accountsForService:kMyAppKeychainService];
+}
+
+- (void)savePassword:(NSString *)password forAccount:(NSString *)account {
+    [SAMKeychain setPassword:password
+                  forService:kMyAppKeychainService
+                     account:account];
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Advanced Queries" icon="magnifying-glass" href="/guides/advanced-queries">
+    Use SAMKeychainQuery for complex operations
+  </Card>
+  <Card title="Synchronization" icon="cloud" href="/guides/synchronization">
+    Sync passwords across devices with iCloud
+  </Card>
+  <Card title="Storing Passwords" icon="lock" href="/guides/storing-passwords">
+    Learn best practices for password storage
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/samkeychain">
+    Complete API documentation
+  </Card>
+</CardGroup>

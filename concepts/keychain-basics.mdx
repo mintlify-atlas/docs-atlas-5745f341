@@ -1,0 +1,207 @@
+---
+title: "Keychain Basics"
+description: "Understand the fundamentals of the iOS and macOS keychain system"
+icon: "key"
+---
+
+## What is the Keychain?
+
+The keychain is Apple's secure storage system for passwords, certificates, keys, and other sensitive information across iOS, macOS, tvOS, and watchOS. It provides encrypted storage that persists across app launches and device restarts.
+
+<Info>
+  The keychain is powered by Apple's Security framework and uses hardware-backed encryption on modern devices, making it one of the most secure ways to store sensitive data.
+</Info>
+
+## Core Concepts
+
+### Services and Accounts
+
+The keychain organizes data using two primary identifiers:
+
+**Service** - A string that identifies the application or service that owns the keychain item. Typically your app's bundle identifier or a descriptive name.
+
+**Account** - A string that identifies the specific account within a service, such as a username or email address.
+
+Together, these create a unique identifier for each keychain item.
+
+```objectivec Example Usage
+// Store a password for a specific account
+[SAMKeychain setPassword:@"mySecretPassword" 
+              forService:@"com.myapp.MyApp"  // Service identifier
+                 account:@"user@example.com"];  // Account identifier
+
+// Retrieve the password using the same identifiers
+NSString *password = [SAMKeychain passwordForService:@"com.myapp.MyApp" 
+                                             account:@"user@example.com"];
+```
+
+<Tip>
+  Use your app's bundle identifier as the service name to ensure uniqueness and avoid conflicts with other apps.
+</Tip>
+
+### Keychain Item Attributes
+
+Beyond the basic service and account identifiers, keychain items can include additional metadata:
+
+| Attribute | Key Constant | Description |
+|-----------|--------------|-------------|
+| Account | `kSAMKeychainAccountKey` | The account name for the keychain item |
+| Service | `kSAMKeychainWhereKey` | The service associated with the item |
+| Label | `kSAMKeychainLabelKey` | A user-visible label for the item |
+| Description | `kSAMKeychainDescriptionKey` | A description of the item |
+| Created At | `kSAMKeychainCreatedAtKey` | Timestamp when the item was created |
+| Last Modified | `kSAMKeychainLastModifiedKey` | Timestamp when the item was last modified |
+| Class | `kSAMKeychainClassKey` | The item's class (e.g., generic password) |
+
+These attributes are returned when you query accounts:
+
+```objectivec Querying Account Information
+// Get all accounts for a service
+NSArray *accounts = [SAMKeychain accountsForService:@"com.myapp.MyApp"];
+
+for (NSDictionary *account in accounts) {
+    NSString *accountName = account[kSAMKeychainAccountKey];
+    NSString *createdAt = account[kSAMKeychainCreatedAtKey];
+    NSString *label = account[kSAMKeychainLabelKey];
+    
+    NSLog(@"Account: %@, Created: %@", accountName, createdAt);
+}
+```
+
+## Password Storage
+
+SAMKeychain supports storing passwords in two formats:
+
+### String Passwords
+
+The most common use case is storing string-based passwords:
+
+```objectivec String Password Storage
+// Store a password string
+BOOL success = [SAMKeychain setPassword:@"myPassword123" 
+                             forService:@"com.myapp.MyApp" 
+                                account:@"user@example.com"];
+
+if (success) {
+    NSLog(@"Password stored successfully");
+}
+
+// Retrieve the password string
+NSString *password = [SAMKeychain passwordForService:@"com.myapp.MyApp" 
+                                             account:@"user@example.com"];
+```
+
+### Binary Data Storage
+
+For storing non-string data like encryption keys or tokens:
+
+```objectivec Binary Data Storage
+// Store binary data
+NSData *tokenData = [@"secret-token" dataUsingEncoding:NSUTF8StringEncoding];
+BOOL success = [SAMKeychain setPasswordData:tokenData 
+                                 forService:@"com.myapp.MyApp" 
+                                    account:@"api-token"];
+
+// Retrieve binary data
+NSData *retrievedData = [SAMKeychain passwordDataForService:@"com.myapp.MyApp" 
+                                                    account:@"api-token"];
+```
+
+<Warning>
+  The keychain is designed for storing small amounts of sensitive data like passwords and keys. For larger data, consider using encrypted file storage instead.
+</Warning>
+
+## Managing Keychain Items
+
+### Deleting Items
+
+Remove keychain items when they're no longer needed:
+
+```objectivec Deleting Passwords
+BOOL deleted = [SAMKeychain deletePasswordForService:@"com.myapp.MyApp" 
+                                             account:@"user@example.com"];
+
+if (deleted) {
+    NSLog(@"Password deleted successfully");
+}
+```
+
+### Listing All Accounts
+
+Retrieve all accounts across all services or for a specific service:
+
+```objectivec Listing Accounts
+// Get all accounts across all services
+NSArray *allAccounts = [SAMKeychain allAccounts];
+
+// Get accounts for a specific service
+NSArray *serviceAccounts = [SAMKeychain accountsForService:@"com.myapp.MyApp"];
+
+for (NSDictionary *account in serviceAccounts) {
+    NSString *accountName = account[kSAMKeychainAccountKey];
+    NSLog(@"Found account: %@", accountName);
+}
+```
+
+## How SAMKeychain Works
+
+SAMKeychain is a high-level wrapper around Apple's Security framework. Under the hood:
+
+1. **Generic Password Items** - SAMKeychain uses `kSecClassGenericPassword` items, which are designed for storing passwords and other secrets
+
+2. **Automatic Updates** - When you set a password that already exists, SAMKeychain automatically updates the existing item rather than creating a duplicate
+
+3. **UTF-8 Encoding** - String passwords are automatically converted to/from UTF-8 encoded NSData for storage
+
+4. **Query Abstraction** - The `SAMKeychainQuery` class provides a flexible interface for more advanced keychain operations
+
+```objectivec Using SAMKeychainQuery
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"com.myapp.MyApp";
+query.account = @"user@example.com";
+query.password = @"mySecretPassword";
+
+NSError *error = nil;
+BOOL success = [query save:&error];
+
+if (!success) {
+    NSLog(@"Error saving: %@", error);
+}
+```
+
+## Security Considerations
+
+<Note>
+  The keychain automatically handles encryption and decryption. You don't need to manually encrypt data before storing it in the keychain.
+</Note>
+
+### What the Keychain Protects
+
+- **Encryption at Rest** - All keychain data is encrypted on disk
+- **Device Lock Protection** - Items can be configured to be accessible only when the device is unlocked
+- **Secure Enclave** - On devices with Secure Enclave, keychain items can use hardware-backed encryption
+- **App Isolation** - By default, apps can only access their own keychain items
+
+### Best Practices
+
+1. **Use Appropriate Accessibility** - Configure when items should be accessible (see [Accessibility](/concepts/accessibility))
+2. **Clean Up** - Delete keychain items when they're no longer needed (e.g., on logout)
+3. **Handle Errors** - Always check return values and handle errors appropriately
+4. **Avoid Duplicate Storage** - Don't store the same sensitive data in both keychain and other locations
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Accessibility Options" icon="lock" href="/concepts/accessibility">
+    Learn about keychain item accessibility and when to use each option
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/concepts/error-handling">
+    Understand error codes and how to handle keychain operations errors
+  </Card>
+  <Card title="Advanced Usage" icon="sliders" href="/guides/advanced-queries">
+    Explore SAMKeychainQuery for advanced keychain operations
+  </Card>
+  <Card title="iCloud Sync" icon="cloud" href="/guides/synchronization">
+    Enable iCloud Keychain synchronization across devices
+  </Card>
+</CardGroup>

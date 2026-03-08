@@ -1,0 +1,216 @@
+---
+title: Installation
+description: Add SAMKeychain to your project using CocoaPods, Carthage, or manual installation
+---
+
+SAMKeychain can be integrated into your project using several different methods. Choose the one that best fits your workflow.
+
+<Note>
+  SAMKeychain requires ARC (Automatic Reference Counting) to be enabled in your project.
+</Note>
+
+## Installation Methods
+
+<CodeGroup>
+
+```ruby CocoaPods
+pod 'SAMKeychain'
+```
+
+```text Carthage
+github "soffes/SAMKeychain"
+```
+
+</CodeGroup>
+
+## CocoaPods
+
+<Steps>
+  <Step title="Add to Podfile">
+    Add the following line to your `Podfile`:
+    
+    ```ruby
+    pod 'SAMKeychain'
+    ```
+    
+    If you need a specific version:
+    
+    ```ruby
+    pod 'SAMKeychain', '~> 1.5.3'
+    ```
+  </Step>
+  
+  <Step title="Install dependencies">
+    Run the pod install command:
+    
+    ```bash
+    pod install
+    ```
+  </Step>
+  
+  <Step title="Import the header">
+    Import SAMKeychain in your code:
+    
+    ```objective-c
+    #import <SAMKeychain/SAMKeychain.h>
+    ```
+  </Step>
+</Steps>
+
+## Carthage
+
+<Steps>
+  <Step title="Add to Cartfile">
+    Add the following line to your `Cartfile`:
+    
+    ```text
+    github "soffes/SAMKeychain"
+    ```
+    
+    For a specific version:
+    
+    ```text
+    github "soffes/SAMKeychain" ~> 1.5.3
+    ```
+  </Step>
+  
+  <Step title="Build the framework">
+    Run Carthage to build the framework:
+    
+    ```bash
+    carthage update
+    ```
+  </Step>
+  
+  <Step title="Add framework to project">
+    Drag the built `SAMKeychain.framework` from `Carthage/Build` to your project's "Linked Frameworks and Libraries" section in Xcode.
+  </Step>
+  
+  <Step title="Add run script">
+    Add a new Run Script Phase in your target's Build Phases:
+    
+    ```bash
+    /usr/local/bin/carthage copy-frameworks
+    ```
+    
+    Add the framework path to "Input Files":
+    
+    ```text
+    $(SRCROOT)/Carthage/Build/iOS/SAMKeychain.framework
+    ```
+  </Step>
+  
+  <Step title="Import the header">
+    Import SAMKeychain in your code:
+    
+    ```objective-c
+    #import <SAMKeychain/SAMKeychain.h>
+    ```
+  </Step>
+</Steps>
+
+## Manual Installation
+
+If you prefer not to use a dependency manager, you can manually add SAMKeychain to your project.
+
+<Steps>
+  <Step title="Download source files">
+    Download or clone the SAMKeychain repository from [GitHub](https://github.com/soffes/samkeychain).
+  </Step>
+  
+  <Step title="Add files to project">
+    Add the following files from the `Sources` directory to your Xcode project:
+    
+    - `SAMKeychain.h`
+    - `SAMKeychain.m`
+    - `SAMKeychainQuery.h`
+    - `SAMKeychainQuery.m`
+    
+    <Tip>
+      Make sure "Copy items if needed" is checked when adding the files to your project.
+    </Tip>
+  </Step>
+  
+  <Step title="Add Security framework">
+    Add the `Security.framework` to your target:
+    
+    1. Select your project in the Project Navigator
+    2. Select your target
+    3. Go to the "General" tab
+    4. Scroll to "Frameworks, Libraries, and Embedded Content"
+    5. Click the "+" button
+    6. Search for and add `Security.framework`
+  </Step>
+  
+  <Step title="Import the header">
+    Import SAMKeychain in your code:
+    
+    ```objective-c
+    #import "SAMKeychain.h"
+    ```
+    
+    <Note>
+      Note the use of quotes instead of angle brackets when using manual installation.
+    </Note>
+  </Step>
+</Steps>
+
+## Verification
+
+To verify that SAMKeychain is correctly installed, try building your project. You should be able to import and use SAMKeychain without any errors:
+
+```objective-c
+#import <SAMKeychain/SAMKeychain.h>
+
+// Test that SAMKeychain is available
+NSArray *accounts = [SAMKeychain allAccounts];
+NSLog(@"SAMKeychain is working! Found %lu accounts", (unsigned long)accounts.count);
+```
+
+## Platform-Specific Notes
+
+### macOS
+
+No additional configuration is required for macOS. The Security framework is available on macOS 10.8 and later.
+
+### iOS, tvOS, and watchOS
+
+For iOS, tvOS, and watchOS, you can configure keychain accessibility and access groups:
+
+```objective-c
+// Set accessibility type (iOS 4.0+)
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+```
+
+### Access Groups (iOS)
+
+If you need to share keychain data between apps, configure access groups in your entitlements file and use `SAMKeychainQuery`:
+
+```objective-c
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.accessGroup = @"com.yourcompany.shared";
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Build fails with 'Security/Security.h' not found">
+    Make sure the Security framework is added to your target. See the manual installation steps above.
+  </Accordion>
+  
+  <Accordion title="ARC-related errors">
+    SAMKeychain requires ARC to be enabled. Check your project's build settings and ensure "Objective-C Automatic Reference Counting" is set to "Yes".
+  </Accordion>
+  
+  <Accordion title="Duplicate symbol errors">
+    You may have included SAMKeychain through multiple methods (e.g., both CocoaPods and manual installation). Choose one installation method and remove the other.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+  Now that SAMKeychain is installed, learn how to use it with our quick start guide.
+</Card>

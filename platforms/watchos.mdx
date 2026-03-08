@@ -1,0 +1,206 @@
+---
+title: watchOS Support
+description: watchOS platform support and considerations for SAMKeychain
+---
+
+## Minimum Deployment Target
+
+watchOS 2.0 or later
+
+## Platform Support
+
+SAMKeychain fully supports watchOS with the same API as iOS. The library is compiled with `TARGET_OS_IPHONE` defined for watchOS, which includes iOS-specific features.
+
+## Available Features
+
+### Accessibility Types
+
+watchOS supports the same accessibility type configuration as iOS:
+
+```objc
+// Set accessibility type for all future passwords
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+
+// Get current accessibility type
+CFTypeRef accessibilityType = [SAMKeychain accessibilityType];
+```
+
+<Note>
+For watchOS apps, `kSecAttrAccessibleAfterFirstUnlock` is recommended since watch apps may need to access keychain items while running in the background or when the watch is being worn but locked.
+</Note>
+
+### Access Groups
+
+Access groups are available on watchOS, allowing keychain sharing between your watch app and iOS companion app:
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"myPassword";
+query.accessGroup = @"TEAM_ID.com.example.shared";
+
+NSError *error = nil;
+[query save:&error];
+```
+
+<Note>
+Access groups do not work in the watchOS Simulator. Test this functionality on physical Apple Watch devices paired with an iPhone.
+</Note>
+
+### iCloud Keychain Synchronization
+
+watchOS supports iCloud Keychain synchronization, which is essential for sharing credentials between your watchOS app and iOS companion app:
+
+```objc
+// Check if synchronization is available
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyService";
+    query.account = @"user@example.com";
+    query.password = @"myPassword";
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    
+    NSError *error = nil;
+    [query save:&error];
+}
+```
+
+## Basic Usage
+
+Standard keychain operations work identically to iOS:
+
+```objc
+// Save a password
+[SAMKeychain setPassword:@"myPassword" 
+              forService:@"MyService" 
+                 account:@"user@example.com"];
+
+// Retrieve a password
+NSString *password = [SAMKeychain passwordForService:@"MyService" 
+                                             account:@"user@example.com"];
+
+// Delete a password
+[SAMKeychain deletePasswordForService:@"MyService" 
+                              account:@"user@example.com"];
+
+// Get all accounts
+NSArray *accounts = [SAMKeychain accountsForService:@"MyService"];
+```
+
+## watchOS-Specific Considerations
+
+### Sharing with iOS Companion App
+
+watchOS apps typically need to share keychain data with their iOS companion app. Use both access groups and synchronization:
+
+```objc
+// Save on iOS app with access group and synchronization
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"com.example.myapp";
+query.account = @"user@example.com";
+query.password = @"myPassword";
+query.accessGroup = @"TEAM_ID.com.example.shared";
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+
+NSError *error = nil;
+[query save:&error];
+
+// Access from watchOS app using the same configuration
+SAMKeychainQuery *watchQuery = [[SAMKeychainQuery alloc] init];
+watchQuery.service = @"com.example.myapp";
+watchQuery.account = @"user@example.com";
+watchQuery.accessGroup = @"TEAM_ID.com.example.shared";
+[watchQuery fetch:&error];
+NSString *password = watchQuery.password;
+```
+
+### Background Execution
+
+watchOS apps may need to access keychain items during background refresh or complication updates:
+
+```objc
+// Use accessibility type that allows background access
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+```
+
+<Note>
+Do not use `kSecAttrAccessibleWhenUnlocked` if your watchOS app needs keychain access during background refresh, complication updates, or when the watch is locked but being worn.
+</Note>
+
+### Limited Storage
+
+Apple Watch devices have limited storage compared to iOS devices. While the keychain itself is not a storage concern, be mindful when storing large data objects:
+
+```objc
+// Store only essential data
+[SAMKeychain setPassword:@"token" 
+              forService:@"MyService" 
+                 account:@"api-token"];
+
+// Avoid storing large binary data
+// NSData *largeData = ...; // Not recommended for watch
+```
+
+## Error Handling
+
+watchOS uses the same error handling as iOS:
+
+```objc
+NSError *error = nil;
+BOOL success = [SAMKeychain setPassword:@"myPassword" 
+                             forService:@"MyService" 
+                                account:@"user@example.com" 
+                                  error:&error];
+
+if (!success) {
+    NSLog(@"Error saving password: %@", error.localizedDescription);
+}
+```
+
+## Best Practices
+
+When using SAMKeychain on watchOS:
+
+1. **Enable synchronization** - Use iCloud Keychain sync to share credentials with iOS app
+2. **Use access groups** - Share keychain items between watch and phone apps
+3. **Match service names** - Use identical service identifiers across watchOS and iOS
+4. **Choose appropriate accessibility** - Use `kSecAttrAccessibleAfterFirstUnlock` for background access
+5. **Test on devices** - Some features require physical Apple Watch hardware
+6. **Handle pairing changes** - Consider scenarios where the watch is paired with a different iPhone
+
+## Cross-Platform Example
+
+Here's a complete example of sharing credentials between iOS and watchOS:
+
+```objc
+// Shared constants (in both iOS and watchOS targets)
+NSString *const kServiceName = @"com.example.myapp";
+NSString *const kAccessGroup = @"TEAM_ID.com.example.shared";
+
+// On iOS - save credentials
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = kServiceName;
+query.account = @"user@example.com";
+query.password = @"myPassword";
+query.accessGroup = kAccessGroup;
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+
+NSError *error = nil;
+if (![query save:&error]) {
+    NSLog(@"Failed to save: %@", error);
+}
+
+// On watchOS - retrieve credentials
+SAMKeychainQuery *watchQuery = [[SAMKeychainQuery alloc] init];
+watchQuery.service = kServiceName;
+watchQuery.account = @"user@example.com";
+watchQuery.accessGroup = kAccessGroup;
+
+if ([watchQuery fetch:&error]) {
+    NSString *password = watchQuery.password;
+    // Use the password
+} else {
+    NSLog(@"Failed to fetch: %@", error);
+}
+```

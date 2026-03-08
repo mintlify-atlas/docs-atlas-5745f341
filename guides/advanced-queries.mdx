@@ -1,0 +1,545 @@
+---
+title: "Advanced Queries"
+description: "Use SAMKeychainQuery for advanced keychain operations"
+---
+
+## Overview
+
+While the `SAMKeychain` class methods are convenient for simple operations, `SAMKeychainQuery` provides fine-grained control over keychain operations. This guide covers advanced features like custom labels, access groups, and programmatic query building.
+
+## Understanding SAMKeychainQuery
+
+`SAMKeychainQuery` is the underlying class that `SAMKeychain` uses internally. It gives you direct access to:
+
+- Custom item labels
+- Access groups for sharing between apps
+- Synchronization control
+- Direct access to password data
+
+```objectivec
+// Simple approach (uses SAMKeychainQuery internally)
+[SAMKeychain setPassword:@"password" forService:@"MyApp" account:@"user"];
+
+// Advanced approach (direct SAMKeychainQuery usage)
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user";
+query.password = @"password";
+[query save:nil];
+```
+
+## Creating and Configuring Queries
+
+### Basic Query Setup
+
+```objectivec
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"com.company.MyApp";
+query.account = @"user@example.com";
+```
+
+### Setting Password Data
+
+`SAMKeychainQuery` provides three ways to set password data:
+
+```objectivec
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user";
+
+// Option 1: String password (automatically converts to UTF-8 NSData)
+query.password = @"myPassword123";
+
+// Option 2: Raw NSData
+query.passwordData = [@"myPassword123" dataUsingEncoding:NSUTF8StringEncoding];
+
+// Option 3: Any NSCoding-compliant object (automatically archived)
+NSDictionary *credentials = @{
+    @"username": @"user@example.com",
+    @"token": @"abc123"
+};
+query.passwordObject = credentials;
+```
+
+<Note>
+All three properties (`password`, `passwordData`, `passwordObject`) interact with the same underlying data. Setting one will affect what you get when reading another.
+</Note>
+
+## Saving with Custom Labels
+
+Custom labels help identify keychain items in system interfaces:
+
+```objectivec
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"com.company.MyApp";
+query.account = @"user@example.com";
+query.password = @"myPassword";
+query.label = @"MyApp Login Credentials";
+
+NSError *error = nil;
+if ([query save:&error]) {
+    NSLog(@"Saved with custom label");
+} else {
+    NSLog(@"Save failed: %@", error);
+}
+```
+
+Custom labels appear:
+- In the macOS Keychain Access app
+- When the system prompts users for keychain access
+- In keychain search results
+
+<Tip>
+Use descriptive labels to help users understand what each keychain item is for when they view them in Keychain Access.
+</Tip>
+
+## Access Groups
+
+Access groups allow multiple apps from the same development team to share keychain items.
+
+### Setting Up Access Groups
+
+<Steps>
+  <Step title="Configure your app's entitlements">
+    
+    Add keychain access groups to your app's entitlements file:
+    
+    ```xml
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.company.shared</string>
+    </array>
+    ```
+    
+  </Step>
+  
+  <Step title="Use the access group in your code">
+    
+    ```objectivec
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"SharedService";
+    query.account = @"user@example.com";
+    query.password = @"sharedPassword";
+    query.accessGroup = @"com.company.shared";
+    
+    NSError *error = nil;
+    if ([query save:&error]) {
+        NSLog(@"Saved to shared access group");
+    }
+    ```
+    
+  </Step>
+  
+  <Step title="Access from other apps">
+    
+    Any app with the same access group can retrieve the data:
+    
+    ```objectivec
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"SharedService";
+    query.account = @"user@example.com";
+    query.accessGroup = @"com.company.shared";
+    
+    if ([query fetch:nil]) {
+        NSLog(@"Shared password: %@", query.password);
+    }
+    ```
+    
+  </Step>
+</Steps>
+
+<Warning>
+Access groups only work between apps signed with the same development team. The access group identifier must match in all apps' entitlements.
+</Warning>
+
+## Fetching Data
+
+### Single Item Fetch
+
+```objectivec
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user@example.com";
+
+NSError *error = nil;
+if ([query fetch:&error]) {
+    // Access retrieved data
+    NSString *password = query.password;
+    NSData *passwordData = query.passwordData;
+    
+    NSLog(@"Retrieved password: %@", password);
+} else {
+    NSLog(@"Fetch failed: %@", error);
+}
+```
+
+### Fetching All Matching Items
+
+```objectivec
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+// Leave account nil to get all accounts for this service
+
+NSError *error = nil;
+NSArray *results = [query fetchAll:&error];
+
+if (results) {
+    NSLog(@"Found %lu items", (unsigned long)results.count);
+    
+    for (NSDictionary *item in results) {
+        NSString *account = item[kSAMKeychainAccountKey];
+        NSString *created = item[kSAMKeychainCreatedAtKey];
+        NSLog(@"Account: %@, Created: %@", account, created);
+    }
+} else {
+    NSLog(@"Fetch failed: %@", error);
+}
+```
+
+## Deleting Items
+
+```objectivec
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user@example.com";
+
+NSError *error = nil;
+if ([query deleteItem:&error]) {
+    NSLog(@"Item deleted");
+} else {
+    if (error.code == errSecItemNotFound) {
+        NSLog(@"Item doesn't exist");
+    } else {
+        NSLog(@"Delete failed: %@", error);
+    }
+}
+```
+
+## Storing Complex Objects
+
+### Storing Custom Objects
+
+```objectivec
+// Define a custom credentials object
+@interface UserCredentials : NSObject <NSCoding>
+@property (nonatomic, strong) NSString *username;
+@property (nonatomic, strong) NSString *password;
+@property (nonatomic, strong) NSString *apiToken;
+@property (nonatomic, strong) NSDate *expirationDate;
+@end
+
+// Store the object
+UserCredentials *credentials = [[UserCredentials alloc] init];
+credentials.username = @"user@example.com";
+credentials.password = @"password123";
+credentials.apiToken = @"abc123token";
+credentials.expirationDate = [NSDate dateWithTimeIntervalSinceNow:3600];
+
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = credentials.username;
+query.passwordObject = credentials;
+
+[query save:nil];
+```
+
+### Retrieving Custom Objects
+
+```objectivec
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user@example.com";
+
+if ([query fetch:nil]) {
+    UserCredentials *credentials = (UserCredentials *)query.passwordObject;
+    
+    NSLog(@"Username: %@", credentials.username);
+    NSLog(@"API Token: %@", credentials.apiToken);
+    NSLog(@"Expires: %@", credentials.expirationDate);
+}
+```
+
+## Synchronization Control
+
+Control iCloud Keychain synchronization on a per-item basis:
+
+```objectivec
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+
+// Check if synchronization is available at runtime
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = @"user@example.com";
+    query.password = @"myPassword";
+    
+    // Control synchronization
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    
+    [query save:nil];
+}
+
+#endif
+```
+
+Synchronization modes:
+- `SAMKeychainQuerySynchronizationModeAny` - Fetch both synced and non-synced items
+- `SAMKeychainQuerySynchronizationModeNo` - Never sync this item
+- `SAMKeychainQuerySynchronizationModeYes` - Sync this item to iCloud
+
+<Note>
+See the [Synchronization Guide](/guides/synchronization) for detailed information about iCloud Keychain sync.
+</Note>
+
+## Common Advanced Patterns
+
+### Building a Reusable Query
+
+```objectivec
+- (SAMKeychainQuery *)baseQuery {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp";
+    
+#ifdef SAMKEYCHAIN_ACCESS_GROUP_AVAILABLE
+    query.accessGroup = @"com.company.shared";
+#endif
+    
+    return query;
+}
+
+- (void)savePassword:(NSString *)password forAccount:(NSString *)account {
+    SAMKeychainQuery *query = [self baseQuery];
+    query.account = account;
+    query.password = password;
+    [query save:nil];
+}
+
+- (NSString *)passwordForAccount:(NSString *)account {
+    SAMKeychainQuery *query = [self baseQuery];
+    query.account = account;
+    
+    if ([query fetch:nil]) {
+        return query.password;
+    }
+    return nil;
+}
+```
+
+### Conditional Synchronization
+
+```objectivec
+- (void)savePassword:(NSString *)password 
+          forAccount:(NSString *)account
+            syncable:(BOOL)syncable {
+    
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = account;
+    query.password = password;
+    
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    if ([SAMKeychainQuery isSynchronizationAvailable]) {
+        query.synchronizationMode = syncable ? 
+            SAMKeychainQuerySynchronizationModeYes :
+            SAMKeychainQuerySynchronizationModeNo;
+    }
+#endif
+    
+    NSError *error = nil;
+    if (![query save:&error]) {
+        NSLog(@"Failed to save: %@", error);
+    }
+}
+```
+
+### Search by Label
+
+```objectivec
+- (NSArray<NSDictionary *> *)findItemsWithLabel:(NSString *)label {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    
+    NSError *error = nil;
+    NSArray *allItems = [query fetchAll:&error];
+    
+    if (!allItems) {
+        return @[];
+    }
+    
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:
+                             @"%K == %@", kSAMKeychainLabelKey, label];
+    
+    return [allItems filteredArrayUsingPredicate:predicate];
+}
+```
+
+### Batch Operations
+
+```objectivec
+- (void)saveMultipleCredentials:(NSDictionary<NSString *, NSString *> *)credentials {
+    for (NSString *account in credentials) {
+        NSString *password = credentials[account];
+        
+        SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+        query.service = @"MyApp";
+        query.account = account;
+        query.password = password;
+        
+        NSError *error = nil;
+        if (![query save:&error]) {
+            NSLog(@"Failed to save %@: %@", account, error);
+        }
+    }
+}
+
+- (NSDictionary<NSString *, NSString *> *)fetchAllCredentials {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    
+    NSArray *items = [query fetchAll:nil];
+    NSMutableDictionary *credentials = [NSMutableDictionary dictionary];
+    
+    for (NSDictionary *item in items) {
+        NSString *account = item[kSAMKeychainAccountKey];
+        
+        // Fetch password for each account
+        SAMKeychainQuery *fetchQuery = [[SAMKeychainQuery alloc] init];
+        fetchQuery.service = @"MyApp";
+        fetchQuery.account = account;
+        
+        if ([fetchQuery fetch:nil]) {
+            credentials[account] = fetchQuery.password;
+        }
+    }
+    
+    return credentials;
+}
+```
+
+### Error Recovery
+
+```objectivec
+- (BOOL)saveWithRetry:(NSString *)password 
+           forAccount:(NSString *)account {
+    
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = account;
+    query.password = password;
+    
+    NSError *error = nil;
+    if ([query save:&error]) {
+        return YES;
+    }
+    
+    // Handle specific errors
+    if (error.code == errSecDuplicateItem) {
+        // Item exists, try updating
+        NSLog(@"Item exists, attempting update");
+        
+        // Delete and retry
+        [query deleteItem:nil];
+        return [query save:nil];
+    }
+    
+    NSLog(@"Save failed: %@", error);
+    return NO;
+}
+```
+
+## Best Practices
+
+### Always Handle Errors
+
+```objectivec
+// ❌ Bad: Ignoring errors
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user";
+[query fetch:nil];
+NSString *password = query.password;
+
+// ✅ Good: Checking for errors
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user";
+
+NSError *error = nil;
+if ([query fetch:&error]) {
+    NSString *password = query.password;
+    // Use password
+} else {
+    NSLog(@"Fetch failed: %@", error);
+}
+```
+
+### Validate Before Save
+
+```objectivec
+- (BOOL)saveQuery:(SAMKeychainQuery *)query error:(NSError **)error {
+    // Validate required fields
+    if (!query.service || query.service.length == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:kSAMKeychainErrorDomain
+                                        code:SAMKeychainErrorBadArguments
+                                    userInfo:@{NSLocalizedDescriptionKey: @"Service is required"}];
+        }
+        return NO;
+    }
+    
+    if (!query.account || query.account.length == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:kSAMKeychainErrorDomain
+                                        code:SAMKeychainErrorBadArguments
+                                    userInfo:@{NSLocalizedDescriptionKey: @"Account is required"}];
+        }
+        return NO;
+    }
+    
+    if (!query.passwordData) {
+        if (error) {
+            *error = [NSError errorWithDomain:kSAMKeychainErrorDomain
+                                        code:SAMKeychainErrorBadArguments
+                                    userInfo:@{NSLocalizedDescriptionKey: @"Password is required"}];
+        }
+        return NO;
+    }
+    
+    return [query save:error];
+}
+```
+
+### Use Constants for Service Names
+
+```objectivec
+static NSString * const kKeychainService = @"com.company.MyApp";
+static NSString * const kKeychainAccessGroup = @"com.company.shared";
+
+- (SAMKeychainQuery *)createQuery {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = kKeychainService;
+    
+#ifdef SAMKEYCHAIN_ACCESS_GROUP_AVAILABLE
+    query.accessGroup = kKeychainAccessGroup;
+#endif
+    
+    return query;
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Synchronization" icon="cloud" href="/guides/synchronization">
+    Learn about iCloud Keychain synchronization
+  </Card>
+  <Card title="Managing Accounts" icon="users" href="/guides/managing-accounts">
+    List and manage multiple accounts
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/samkeychainquery">
+    Complete SAMKeychainQuery API documentation
+  </Card>
+  <Card title="Storing Passwords" icon="lock" href="/guides/storing-passwords">
+    Best practices for password storage
+  </Card>
+</CardGroup>

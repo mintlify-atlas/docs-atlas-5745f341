@@ -1,0 +1,301 @@
+---
+title: "Accessibility Options"
+description: "Configure when keychain items should be accessible and understand the security implications"
+icon: "shield-halved"
+---
+
+## Overview
+
+Keychain accessibility determines when your app can read keychain items. This is a critical security feature that balances convenience with protection of sensitive data.
+
+<Info>
+  Accessibility options are only available on iOS 4.0+, tvOS, and watchOS. They control when the keychain item can be decrypted and accessed by your app.
+</Info>
+
+## Setting Accessibility
+
+SAMKeychain provides a global accessibility setting that applies to all future keychain items:
+
+```objectivec Setting Accessibility
+// Set accessibility for all future passwords
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+
+// Now save a password - it will use the accessibility setting above
+[SAMKeychain setPassword:@"myPassword" 
+              forService:@"com.myapp.MyApp" 
+                 account:@"user@example.com"];
+
+// Check the current accessibility setting
+CFTypeRef currentAccessibility = [SAMKeychain accessibilityType];
+```
+
+<Warning>
+  The default accessibility is `NULL`, which uses the keychain's default behavior. This is **highly insecure** as items may be accessible at any time. Always set an appropriate accessibility type.
+</Warning>
+
+## Accessibility Constants
+
+Apple's Security framework provides several accessibility constants. Choose based on your app's requirements:
+
+### Recommended Options
+
+These options provide strong security and are suitable for most apps:
+
+<AccordionGroup>
+  <Accordion title="kSecAttrAccessibleWhenUnlocked" icon="lock">
+    **When to use**: Most applications that don't need background access
+    
+    **Behavior**:
+    - Accessible only while the device is unlocked
+    - Not accessible when device is locked
+    - Most secure option for items that don't need background access
+    
+    **Use cases**:
+    - User passwords
+    - Personal access tokens
+    - Credit card information
+    - Any sensitive data that's only needed when user is actively using the app
+    
+    ```objectivec
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+    ```
+    
+    <Info>
+      This is the recommended default for most apps that don't require background access to keychain data.
+    </Info>
+  </Accordion>
+
+  <Accordion title="kSecAttrAccessibleAfterFirstUnlock" icon="lock-open">
+    **When to use**: Background apps that need to access keychain items
+    
+    **Behavior**:
+    - Accessible after the device has been unlocked once after boot
+    - Remains accessible even if device is subsequently locked
+    - Protected until first unlock after device restart
+    
+    **Use cases**:
+    - Background sync tokens
+    - VoIP credentials
+    - Location services that continue when device is locked
+    - Push notification handling
+    
+    ```objectivec
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+    ```
+    
+    <Tip>
+      Use this for background applications where you need to access credentials even when the device is locked.
+    </Tip>
+  </Accordion>
+</AccordionGroup>
+
+### Additional Options
+
+<AccordionGroup>
+  <Accordion title="kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly" icon="shield-check">
+    **When to use**: Maximum security for device-specific sensitive data
+    
+    **Behavior**:
+    - Only accessible when device is unlocked
+    - Only available when device has a passcode set
+    - Never migrated to new devices
+    - Not backed up
+    - Item is deleted if passcode is removed
+    
+    **Use cases**:
+    - Extremely sensitive local data
+    - Device-specific encryption keys
+    - Items that should never leave the device
+    
+    ```objectivec
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly];
+    ```
+    
+    <Warning>
+      If the user removes their device passcode, items with this accessibility will be permanently deleted.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="kSecAttrAccessibleWhenUnlockedThisDeviceOnly" icon="mobile">
+    **When to use**: Device-specific data that requires device to be unlocked
+    
+    **Behavior**:
+    - Accessible only while device is unlocked
+    - Never migrated to new devices
+    - Not backed up to iCloud or iTunes
+    - Not synchronized via iCloud Keychain
+    
+    **Use cases**:
+    - Device-specific tokens
+    - Temporary session data
+    - Items that should not transfer to new devices
+    
+    ```objectivec
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlockedThisDeviceOnly];
+    ```
+  </Accordion>
+
+  <Accordion title="kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly" icon="server">
+    **When to use**: Background apps with device-specific credentials
+    
+    **Behavior**:
+    - Accessible after first unlock following boot
+    - Remains accessible when device is locked
+    - Never migrated to new devices
+    - Not backed up or synchronized
+    
+    **Use cases**:
+    - Background service tokens specific to this device
+    - Local server credentials
+    
+    ```objectivec
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly];
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Legacy Options (Not Recommended)
+
+<Warning>
+  The following options are deprecated and should not be used in new code.
+</Warning>
+
+- **`kSecAttrAccessibleAlways`** - Deprecated; accessible at all times (very insecure)
+- **`kSecAttrAccessibleAlwaysThisDeviceOnly`** - Deprecated; accessible at all times, device-only
+
+## Security Implications
+
+### Understanding the Trade-offs
+
+Choosing the right accessibility option requires balancing security with functionality:
+
+| Accessibility | Security Level | Background Access | Survives Lock | Backed Up | Synchronized |
+|--------------|---------------|-------------------|---------------|-----------|-------------|
+| WhenUnlocked | High | No | No | Yes | Yes |
+| AfterFirstUnlock | Medium | Yes | Yes | Yes | Yes |
+| WhenPasscodeSet | Very High | No | No | No | No |
+| ...ThisDeviceOnly variants | Medium-High | Varies | Varies | No | No |
+
+### Common Security Mistakes
+
+<Warning>
+  **Don't** leave accessibility set to `NULL`. This uses the keychain default which is highly insecure.
+</Warning>
+
+```objectivec Bad Practice
+// DON'T: Using default (NULL) accessibility
+// This is insecure!
+[SAMKeychain setPassword:@"myPassword" 
+              forService:@"com.myapp.MyApp" 
+                 account:@"user@example.com"];
+```
+
+```objectivec Good Practice
+// DO: Set appropriate accessibility first
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+
+[SAMKeychain setPassword:@"myPassword" 
+              forService:@"com.myapp.MyApp" 
+                 account:@"user@example.com"];
+```
+
+## Recommended Practices
+
+### By App Type
+
+**Standard User-Facing Apps**
+```objectivec
+// Best for most apps
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+```
+
+**Background Services (VoIP, Location, etc.)**
+```objectivec
+// Allows background access
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+```
+
+**Maximum Security Apps (Banking, Health, etc.)**
+```objectivec
+// Requires passcode and device unlock
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly];
+```
+
+### Setting Accessibility Early
+
+Set accessibility during app initialization, before storing any keychain items:
+
+```objectivec Application Initialization
+- (BOOL)application:(UIApplication *)application 
+    didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    
+    // Set keychain accessibility early
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+    
+    // Rest of initialization...
+    return YES;
+}
+```
+
+### Different Accessibility for Different Items
+
+For more granular control, use `SAMKeychainQuery` to set different accessibility for specific items:
+
+```objectivec Per-Item Accessibility
+// User password - accessible only when unlocked
+SAMKeychainQuery *passwordQuery = [[SAMKeychainQuery alloc] init];
+passwordQuery.service = @"com.myapp.MyApp";
+passwordQuery.account = @"user@example.com";
+passwordQuery.password = @"userPassword";
+// Note: SAMKeychainQuery uses the global accessibility from SAMKeychain
+
+// For different accessibility per item, you would need to:
+// 1. Set the global accessibility
+// 2. Save the item
+// 3. Change global accessibility
+// 4. Save the next item
+// Or use Security framework directly for per-item control
+```
+
+<Note>
+  SAMKeychain's `setAccessibilityType:` is global and applies to all future items. For fine-grained per-item control, you may need to work with Apple's Security framework directly.
+</Note>
+
+## Platform Availability
+
+Accessibility options are only available on iOS 4.0 and later:
+
+```objectivec Platform Check
+#if __IPHONE_4_0 && TARGET_OS_IPHONE
+    // Accessibility is available
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+#endif
+```
+
+On macOS, accessibility options are not available through SAMKeychain's simple interface, as they're primarily an iOS/tvOS/watchOS feature.
+
+## Testing Accessibility
+
+Test your accessibility settings to ensure they behave as expected:
+
+1. **Lock Device Test**: Store an item, lock the device, and verify background access behavior
+2. **Reboot Test**: Restart the device and check accessibility before first unlock
+3. **Passcode Removal Test**: For `WhenPasscodeSet` items, verify deletion when passcode is removed
+4. **Background Task Test**: Ensure background tasks can access items with appropriate accessibility
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/concepts/error-handling">
+    Learn how to handle errors when accessibility prevents access
+  </Card>
+  <Card title="Keychain Basics" icon="key" href="/concepts/keychain-basics">
+    Understand the fundamentals of keychain storage
+  </Card>
+  <Card title="iCloud Sync" icon="cloud" href="/guides/synchronization">
+    Sync keychain items across user's devices with iCloud
+  </Card>
+  <Card title="Background Tasks" icon="clock" href="/concepts/accessibility#background-access">
+    Access keychain items from background tasks
+  </Card>
+</CardGroup>

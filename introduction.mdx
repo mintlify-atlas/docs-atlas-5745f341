@@ -1,0 +1,104 @@
+---
+title: Introduction
+description: A simple Objective-C wrapper for accessing the system Keychain on macOS, iOS, tvOS, and watchOS
+---
+
+## What is SAMKeychain?
+
+SAMKeychain is a simple wrapper for accessing accounts, getting passwords, setting passwords, and deleting passwords using the system Keychain on Mac OS X and iOS. It provides a clean, easy-to-use Objective-C interface that abstracts away the complexity of Apple's C-based Keychain Services API.
+
+Originally inspired by EMKeychain and SDKeychain, SAMKeychain has evolved into a robust solution that handles the intricate details of keychain management, allowing you to focus on your application logic rather than wrestling with low-level C APIs.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Simple API" icon="code">
+    Clean class methods for common keychain operations - no complex C structures or error codes to manage
+  </Card>
+  
+  <Card title="Cross-Platform" icon="mobile">
+    Works on macOS 10.8+, iOS 5.0+, tvOS 9.0+, and watchOS 2.0+
+  </Card>
+  
+  <Card title="Modern Objective-C" icon="sparkles">
+    Built with ARC support and includes nullability annotations for better Swift interoperability
+  </Card>
+  
+  <Card title="Flexible Integration" icon="puzzle-piece">
+    Install via CocoaPods, Carthage, or manually - whatever fits your workflow
+  </Card>
+</CardGroup>
+
+## When to Use SAMKeychain
+
+Use SAMKeychain when you need to:
+
+- **Store user credentials securely** - Passwords, tokens, and authentication data
+- **Persist sensitive data** - API keys, encryption keys, or other secrets
+- **Share data between apps** - Using keychain access groups (iOS)
+- **Sync data via iCloud** - With keychain synchronization support
+
+<Note>
+  While SAMKeychain simplifies keychain access, it doesn't make the keychain itself more stable. You should always check for errors and handle failures appropriately in your code.
+</Note>
+
+## Core Concepts
+
+### Service and Account
+
+The keychain organizes data using two primary identifiers:
+
+- **Service** - Typically your app's bundle identifier or a specific service name (e.g., `com.yourcompany.yourapp`)
+- **Account** - The username or account identifier (e.g., `user@example.com`)
+
+Together, these form a unique key for storing and retrieving passwords.
+
+### Two Usage Patterns
+
+SAMKeychain offers two ways to interact with the keychain:
+
+1. **Class Methods** - Quick, one-line operations for common tasks:
+   ```objective-c
+   [SAMKeychain setPassword:@"secret" forService:@"MyApp" account:@"user@example.com"];
+   ```
+
+2. **SAMKeychainQuery** - Advanced interface with more control over attributes:
+   ```objective-c
+   SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+   query.service = @"MyApp";
+   query.account = @"user@example.com";
+   [query fetch:&error];
+   ```
+
+## Platform Support
+
+| Platform | Minimum Version |
+|----------|----------------|
+| macOS    | 10.8           |
+| iOS      | 5.0            |
+| tvOS     | 9.0            |
+| watchOS  | 2.0            |
+
+<Warning>
+  SAMKeychain does not support Mac OS X 10.6. If you need to support older platforms, you'll need to use a different solution or an older version of the library.
+</Warning>
+
+## Security Considerations
+
+<Tip>
+  You should **always** set the `accessibilityType` rather than using the default. For most applications, use `kSecAttrAccessibleWhenUnlocked`. For background applications that need keychain access, use `kSecAttrAccessibleAfterFirstUnlock`.
+</Tip>
+
+The default accessibility setting is highly insecure. See Apple's [Keychain Item Accessibility Constants](https://developer.apple.com/documentation/security/keychain_services/keychain_items/item_attribute_keys_and_values#1679100) documentation for all available options.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Get SAMKeychain integrated into your project
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Write your first keychain operation in minutes
+  </Card>
+</CardGroup>

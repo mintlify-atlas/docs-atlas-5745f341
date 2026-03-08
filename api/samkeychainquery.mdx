@@ -1,0 +1,495 @@
+---
+title: "SAMKeychainQuery"
+description: "Complete API reference for the SAMKeychainQuery class"
+---
+
+Simple interface for querying or modifying keychain items. Use this class for more advanced keychain operations with fine-grained control over keychain attributes.
+
+## Properties
+
+### account
+
+```objc
+@property (nonatomic, copy, nullable) NSString *account;
+```
+
+The account name for the keychain item. Corresponds to `kSecAttrAccount`.
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.account = @"user@example.com";
+query.service = @"MyService";
+```
+
+### service
+
+```objc
+@property (nonatomic, copy, nullable) NSString *service;
+```
+
+The service name for the keychain item. Corresponds to `kSecAttrService`.
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+```
+
+### label
+
+```objc
+@property (nonatomic, copy, nullable) NSString *label;
+```
+
+The label for the keychain item. Corresponds to `kSecAttrLabel`.
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.label = @"My Secure Password";
+query.service = @"MyService";
+query.account = @"user@example.com";
+```
+
+### accessGroup (iOS only)
+
+```objc
+@property (nonatomic, copy, nullable) NSString *accessGroup;
+```
+
+The access group for the keychain item. Corresponds to `kSecAttrAccessGroup`. Only used on iOS for sharing keychain items between apps.
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.accessGroup = @"group.com.example.myapp";
+query.service = @"MyService";
+query.account = @"user@example.com";
+```
+
+<Note>
+This property is only available on iOS 3.0+ and macOS 10.9+.
+</Note>
+
+### synchronizationMode
+
+```objc
+@property (nonatomic) SAMKeychainQuerySynchronizationMode synchronizationMode;
+```
+
+The synchronization mode for the keychain item. Corresponds to `kSecAttrSynchronizable`. Controls whether the keychain item is synchronized via iCloud Keychain.
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+query.service = @"MyService";
+query.account = @"user@example.com";
+```
+
+<Note>
+This property is only available on iOS 7.0+ and macOS 10.9+.
+</Note>
+
+### passwordData
+
+```objc
+@property (nonatomic, copy, nullable) NSData *passwordData;
+```
+
+Root storage for password information. This is the underlying data storage for the password.
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.passwordData = [@"mySecurePassword" dataUsingEncoding:NSUTF8StringEncoding];
+[query save:nil];
+```
+
+### passwordObject
+
+```objc
+@property (nonatomic, copy, nullable) id<NSCoding> passwordObject;
+```
+
+This property automatically transitions between an object and the value of `passwordData` using NSKeyedArchiver and NSKeyedUnarchiver. Use this to store any object that conforms to `NSCoding`.
+
+**Example:**
+
+```objc
+NSDictionary *credentials = @{
+    @"username": @"user@example.com",
+    @"apiKey": @"abc123"
+};
+
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.passwordObject = credentials;
+[query save:nil];
+```
+
+### password
+
+```objc
+@property (nonatomic, copy, nullable) NSString *password;
+```
+
+Convenience accessor for setting and getting a password string. Passes through to `passwordData` using UTF-8 string encoding.
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"mySecurePassword";
+[query save:nil];
+```
+
+## Instance Methods
+
+### save:
+
+Save the receiver's attributes as a keychain item. Existing items with the given account, service, and access group will first be deleted.
+
+```objc
+- (BOOL)save:(NSError **)error;
+```
+
+<ParamField path="error" type="NSError **">
+  Populated should an error occur.
+</ParamField>
+
+<ResponseField name="return" type="BOOL">
+  Returns `YES` if saving was successful, `NO` otherwise.
+</ResponseField>
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"mySecurePassword";
+
+NSError *error = nil;
+BOOL success = [query save:&error];
+if (!success) {
+    NSLog(@"Error saving to keychain: %@", error);
+}
+```
+
+### deleteItem:
+
+Delete keychain items that match the given account, service, and access group.
+
+```objc
+- (BOOL)deleteItem:(NSError **)error;
+```
+
+<ParamField path="error" type="NSError **">
+  Populated should an error occur.
+</ParamField>
+
+<ResponseField name="return" type="BOOL">
+  Returns `YES` if deletion was successful, `NO` otherwise.
+</ResponseField>
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+
+NSError *error = nil;
+BOOL success = [query deleteItem:&error];
+if (!success) {
+    NSLog(@"Error deleting from keychain: %@", error);
+}
+```
+
+### fetch:
+
+Fetch the keychain item that matches the given account, service, and access group. The `password` and `passwordData` properties will be populated unless an error occurs. The values of `password` and `passwordData` are ignored when fetching.
+
+```objc
+- (BOOL)fetch:(NSError **)error;
+```
+
+<ParamField path="error" type="NSError **">
+  Populated should an error occur.
+</ParamField>
+
+<ResponseField name="return" type="BOOL">
+  Returns `YES` if fetching was successful, `NO` otherwise.
+</ResponseField>
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+
+NSError *error = nil;
+BOOL success = [query fetch:&error];
+if (success) {
+    NSLog(@"Retrieved password: %@", query.password);
+} else {
+    NSLog(@"Error fetching from keychain: %@", error);
+}
+```
+
+### fetchAll:
+
+Fetch all keychain items that match the given account, service, and access group. The values of `password` and `passwordData` are ignored when fetching.
+
+```objc
+- (nullable NSArray<NSDictionary<NSString *, id> *> *)fetchAll:(NSError **)error;
+```
+
+<ParamField path="error" type="NSError **">
+  Populated should an error occur.
+</ParamField>
+
+<ResponseField name="return" type="NSArray<NSDictionary<NSString *, id> *> *">
+  Returns an array of dictionaries that represent all matching keychain items or `nil` should an error occur. The order of the items is not determined.
+</ResponseField>
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+
+NSError *error = nil;
+NSArray *items = [query fetchAll:&error];
+if (items) {
+    NSLog(@"Found %lu keychain items", (unsigned long)items.count);
+    for (NSDictionary *item in items) {
+        NSLog(@"Account: %@", item[kSAMKeychainAccountKey]);
+    }
+} else {
+    NSLog(@"Error fetching items: %@", error);
+}
+```
+
+## Class Methods
+
+### isSynchronizationAvailable
+
+Returns a boolean indicating if keychain synchronization is available on the device at runtime. The `#define SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE` is only for compile time. If you are checking for the presence of synchronization, you should use this method.
+
+```objc
++ (BOOL)isSynchronizationAvailable;
+```
+
+<ResponseField name="return" type="BOOL">
+  A value indicating if keychain synchronization is available.
+</ResponseField>
+
+**Example:**
+
+```objc
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    query.service = @"MyService";
+    query.account = @"user@example.com";
+    query.password = @"mySecurePassword";
+    [query save:nil];
+} else {
+    NSLog(@"iCloud Keychain synchronization is not available");
+}
+```
+
+<Note>
+This method is only available on iOS 7.0+ and macOS 10.9+.
+</Note>
+
+## Enumerations
+
+### SAMKeychainQuerySynchronizationMode
+
+Synchronization mode for keychain items.
+
+```objc
+typedef NS_ENUM(NSUInteger, SAMKeychainQuerySynchronizationMode) {
+    SAMKeychainQuerySynchronizationModeAny,
+    SAMKeychainQuerySynchronizationModeNo,
+    SAMKeychainQuerySynchronizationModeYes
+};
+```
+
+#### SAMKeychainQuerySynchronizationModeAny
+
+Query both synchronizable and non-synchronizable items.
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeAny;
+query.service = @"MyService";
+NSArray *items = [query fetchAll:nil];
+```
+
+#### SAMKeychainQuerySynchronizationModeNo
+
+Query only non-synchronizable items (not synchronized via iCloud).
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"mySecurePassword";
+[query save:nil];
+```
+
+#### SAMKeychainQuerySynchronizationModeYes
+
+Query only synchronizable items (synchronized via iCloud).
+
+**Example:**
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"mySecurePassword";
+[query save:nil];
+```
+
+<Note>
+This enumeration is only available on iOS 7.0+ and macOS 10.9+.
+</Note>
+
+## Usage Examples
+
+### Saving a Password
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"mySecurePassword";
+
+NSError *error = nil;
+if ([query save:&error]) {
+    NSLog(@"Password saved successfully");
+} else {
+    NSLog(@"Error saving password: %@", error);
+}
+```
+
+### Fetching a Password
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+
+NSError *error = nil;
+if ([query fetch:&error]) {
+    NSLog(@"Password: %@", query.password);
+} else {
+    NSLog(@"Error fetching password: %@", error);
+}
+```
+
+### Deleting a Password
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+
+NSError *error = nil;
+if ([query deleteItem:&error]) {
+    NSLog(@"Password deleted successfully");
+} else {
+    NSLog(@"Error deleting password: %@", error);
+}
+```
+
+### Using iCloud Keychain Synchronization
+
+```objc
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyService";
+    query.account = @"user@example.com";
+    query.password = @"mySecurePassword";
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    
+    NSError *error = nil;
+    if ([query save:&error]) {
+        NSLog(@"Password saved and will sync via iCloud");
+    } else {
+        NSLog(@"Error: %@", error);
+    }
+}
+```
+
+### Storing Custom Objects
+
+```objc
+NSDictionary *credentials = @{
+    @"username": @"user@example.com",
+    @"apiKey": @"abc123",
+    @"token": @"xyz789"
+};
+
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.passwordObject = credentials;
+
+NSError *error = nil;
+if ([query save:&error]) {
+    NSLog(@"Credentials saved successfully");
+}
+
+// Retrieve the object
+SAMKeychainQuery *fetchQuery = [[SAMKeychainQuery alloc] init];
+fetchQuery.service = @"MyService";
+fetchQuery.account = @"user@example.com";
+
+if ([fetchQuery fetch:&error]) {
+    NSDictionary *retrievedCredentials = (NSDictionary *)fetchQuery.passwordObject;
+    NSLog(@"API Key: %@", retrievedCredentials[@"apiKey"]);
+}
+```
+
+### Using Access Groups for App Groups
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"mySecurePassword";
+query.accessGroup = @"group.com.example.myapp";
+
+NSError *error = nil;
+if ([query save:&error]) {
+    NSLog(@"Password saved to shared access group");
+} else {
+    NSLog(@"Error: %@", error);
+}
+```

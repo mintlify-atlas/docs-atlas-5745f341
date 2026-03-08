@@ -1,97 +1,102 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "SAMKeychain Documentation"
+description: "Simple Objective-C wrapper for the keychain that works on Mac and iOS"
 ---
 
-## Setting up
+<div className="mx-auto max-w-5xl">
+  <div className="mb-12 text-center">
+    <h1 className="mb-4 text-5xl font-bold" style={{ color: '#1a1a1a' }}>
+      SAMKeychain
+    </h1>
+    <p className="mx-auto max-w-2xl text-lg" style={{ color: '#545454' }}>
+      A simple, battle-tested wrapper for accessing the system keychain on iOS, macOS, tvOS, and watchOS. Secure password storage made easy.
+    </p>
+  </div>
 
-Get your documentation site up and running in minutes.
+  <div className="mb-12 flex flex-wrap justify-center gap-4">
+    <a 
+      href="/quickstart" 
+      className="inline-flex items-center justify-center rounded-md px-6 py-3 text-base font-semibold transition-all"
+      style={{ 
+        backgroundColor: '#94cb04', 
+        color: '#ffffff',
+        textDecoration: 'none'
+      }}
+    >
+      Get Started
+    </a>
+    <a 
+      href="/api/samkeychain" 
+      className="inline-flex items-center justify-center rounded-md border-2 px-6 py-3 text-base font-semibold transition-all"
+      style={{ 
+        backgroundColor: 'transparent',
+        borderColor: '#e6e6e6',
+        color: '#1a1a1a',
+        textDecoration: 'none'
+      }}
+    >
+      API Reference
+    </a>
+  </div>
+</div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+## Why SAMKeychain?
 
-## Make it yours
+SAMKeychain simplifies working with the system keychain, abstracting away the complexity of Apple's Security framework while maintaining full control and security.
 
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={3}>
+  <Card title="Simple API" icon="code">
+    Clean class methods for common operations like storing, retrieving, and deleting passwords
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Cross-Platform" icon="mobile">
+    Works seamlessly across iOS, macOS, tvOS, and watchOS
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Secure by Default" icon="shield-check">
+    Built on Apple's Security framework with configurable accessibility options
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="iCloud Sync" icon="cloud">
+    Support for iCloud Keychain synchronization across devices
   </Card>
-</Columns>
+  <Card title="Access Groups" icon="users">
+    Share keychain items between apps using access groups
+  </Card>
+  <Card title="Battle-Tested" icon="star">
+    Over 5,000 stars on GitHub and used by thousands of apps
+  </Card>
+</CardGroup>
 
-## Create beautiful pages
+## Quick Example
 
-Everything you need to create world-class documentation.
+```objectivec Example.m
+#import <SAMKeychain/SAMKeychain.h>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+// Store a password
+[SAMKeychain setPassword:@"mySecretPassword" 
+              forService:@"MyApp" 
+                 account:@"user@example.com"];
 
-## Need inspiration?
+// Retrieve a password
+NSString *password = [SAMKeychain passwordForService:@"MyApp" 
+                                             account:@"user@example.com"];
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+// Delete a password
+[SAMKeychain deletePasswordForService:@"MyApp" 
+                              account:@"user@example.com"];
+```
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install SAMKeychain using CocoaPods, Carthage, or manually
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running in minutes with our step-by-step guide
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/samkeychain">
+    Explore the complete API documentation
+  </Card>
+  <Card title="Guides" icon="map" href="/guides/storing-passwords">
+    Learn best practices and advanced techniques
+  </Card>
+</CardGroup>

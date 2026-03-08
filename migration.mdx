@@ -1,0 +1,348 @@
+---
+title: "Migration Guide"
+description: "Migrate to SAMKeychain from other keychain libraries and handle version updates"
+---
+
+## Overview
+
+SAMKeychain provides a simple migration path from other keychain wrapper libraries and older versions. This guide covers common migration scenarios and best practices.
+
+## Migrating from Other Libraries
+
+### From EMKeychain
+
+SAMKeychain was originally inspired by EMKeychain (now discontinued). The API is similar but with some improvements:
+
+<CodeGroup>
+
+```objectivec EMKeychain (Old)
+// EMKeychain syntax
+[EMKeychain setKeychainPassword:password 
+                     forService:service 
+                        account:account];
+
+NSString *password = [EMKeychain keychainPasswordForService:service 
+                                                     account:account];
+```
+
+```objectivec SAMKeychain (New)
+// SAMKeychain syntax
+[SAMKeychain setPassword:password 
+              forService:service 
+                 account:account];
+
+NSString *password = [SAMKeychain passwordForService:service 
+                                             account:account];
+```
+
+</CodeGroup>
+
+<Note>
+The main difference is simplified method names. Your existing keychain data remains accessible - just update the method calls.
+</Note>
+
+### From SDKeychain
+
+SDKeychain is another discontinued library that SAMKeychain replaces:
+
+<CodeGroup>
+
+```objectivec SDKeychain (Old)
+// SDKeychain syntax
+[SDKeychain storePassword:password 
+               forService:service 
+                  account:account];
+
+NSString *password = [SDKeychain passwordForService:service 
+                                            account:account];
+```
+
+```objectivec SAMKeychain (New)
+// SAMKeychain syntax  
+[SAMKeychain setPassword:password 
+              forService:service 
+                 account:account];
+
+NSString *password = [SAMKeychain passwordForService:service 
+                                             account:account];
+```
+
+</CodeGroup>
+
+### From Raw Security Framework
+
+If you're migrating from direct `Security.framework` usage, SAMKeychain dramatically simplifies your code:
+
+<CodeGroup>
+
+```objectivec Security.framework (Old)
+// Direct Security framework - verbose and error-prone
+NSDictionary *query = @{
+    (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+    (__bridge id)kSecAttrService: service,
+    (__bridge id)kSecAttrAccount: account,
+    (__bridge id)kSecValueData: [password dataUsingEncoding:NSUTF8StringEncoding],
+    (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleWhenUnlocked
+};
+
+OSStatus status = SecItemAdd((__bridge CFDictionaryRef)query, NULL);
+if (status == errSecDuplicateItem) {
+    // Update existing item
+    NSDictionary *attributesToUpdate = @{
+        (__bridge id)kSecValueData: [password dataUsingEncoding:NSUTF8StringEncoding]
+    };
+    status = SecItemUpdate((__bridge CFDictionaryRef)query, 
+                          (__bridge CFDictionaryRef)attributesToUpdate);
+}
+```
+
+```objectivec SAMKeychain (New)
+// SAMKeychain - simple and safe
+NSError *error = nil;
+BOOL success = [SAMKeychain setPassword:password 
+                             forService:service 
+                                account:account 
+                                  error:&error];
+```
+
+</CodeGroup>
+
+<Warning>
+When migrating from direct Security framework usage, ensure your `kSecAttrService` and `kSecAttrAccount` values match exactly to access existing keychain items.
+</Warning>
+
+## ARC Requirements
+
+SAMKeychain requires **Automatic Reference Counting (ARC)** to be enabled in your project.
+
+### If Your Project Uses ARC
+
+No action needed - SAMKeychain will work out of the box.
+
+### If Your Project Uses Manual Reference Counting (MRC)
+
+You have two options:
+
+**Option 1: Enable ARC for SAMKeychain files only**
+
+1. In Xcode, select your target
+2. Go to **Build Phases** > **Compile Sources**
+3. Find SAMKeychain files (`SAMKeychain.m`, `SAMKeychainQuery.m`)
+4. Add the `-fobjc-arc` compiler flag to each file
+
+**Option 2: Convert your entire project to ARC**
+
+Xcode provides an automated migration tool:
+
+1. **Edit** > **Convert** > **To Objective-C ARC...**
+2. Follow the migration assistant prompts
+3. Review and test thoroughly after conversion
+
+<Note>
+Most modern projects use ARC. Manual reference counting is only common in legacy codebases.
+</Note>
+
+## Version Updates
+
+### Updating from 1.x to Current Version
+
+The current version maintains backward compatibility with 1.x releases. However, there are some improvements:
+
+**Error Handling**
+
+```objectivec
+// Old: No error handling
+NSString *password = [SAMKeychain passwordForService:service account:account];
+
+// New: With error handling (recommended)
+NSError *error = nil;
+NSString *password = [SAMKeychain passwordForService:service 
+                                             account:account 
+                                               error:&error];
+if (!password && error) {
+    NSLog(@"Failed to retrieve password: %@", error);
+}
+```
+
+**Swift Integration**
+
+The library now includes `__attribute__((swift_error(none)))` for better Swift integration:
+
+```swift
+// Modern Swift usage
+if let password = SAMKeychain.password(forService: "MyApp", 
+                                       account: "user@example.com") {
+    // Use password
+}
+```
+
+<Warning>
+Always check for errors when performing keychain operations. The keychain can fail for various reasons (device locked, insufficient permissions, etc.).
+</Warning>
+
+### Breaking Changes Checklist
+
+When updating to newer versions:
+
+- ✅ **No breaking changes** in the public API
+- ✅ Error handling is additive (old methods still work)
+- ✅ Existing keychain data remains accessible
+- ⚠️ Default accessibility setting behavior may have changed (explicitly set accessibility type)
+
+## Code Migration Examples
+
+### Complete Migration Example
+
+Here's a complete before/after example:
+
+<CodeGroup>
+
+```objectivec Before.m
+// Old code using manual Security framework
+- (void)savePassword:(NSString *)password forAccount:(NSString *)account {
+    NSData *passwordData = [password dataUsingEncoding:NSUTF8StringEncoding];
+    
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: @"MyApp",
+        (__bridge id)kSecAttrAccount: account,
+    };
+    
+    // Try to delete existing
+    SecItemDelete((__bridge CFDictionaryRef)query);
+    
+    // Add new item
+    NSMutableDictionary *newQuery = [query mutableCopy];
+    newQuery[(__bridge id)kSecValueData] = passwordData;
+    newQuery[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleWhenUnlocked;
+    
+    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)newQuery, NULL);
+    if (status != errSecSuccess) {
+        NSLog(@"Error saving password: %d", (int)status);
+    }
+}
+
+- (NSString *)passwordForAccount:(NSString *)account {
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: @"MyApp",
+        (__bridge id)kSecAttrAccount: account,
+        (__bridge id)kSecReturnData: @YES,
+        (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne
+    };
+    
+    CFDataRef dataRef = NULL;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, (CFTypeRef *)&dataRef);
+    
+    if (status == errSecSuccess && dataRef != NULL) {
+        NSData *data = (__bridge_transfer NSData *)dataRef;
+        return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    }
+    
+    return nil;
+}
+```
+
+```objectivec After.m
+// New code using SAMKeychain
+#import <SAMKeychain/SAMKeychain.h>
+
+- (void)savePassword:(NSString *)password forAccount:(NSString *)account {
+    NSError *error = nil;
+    BOOL success = [SAMKeychain setPassword:password 
+                                 forService:@"MyApp" 
+                                    account:account 
+                                      error:&error];
+    if (!success) {
+        NSLog(@"Error saving password: %@", error.localizedDescription);
+    }
+}
+
+- (NSString *)passwordForAccount:(NSString *)account {
+    NSError *error = nil;
+    NSString *password = [SAMKeychain passwordForService:@"MyApp" 
+                                                 account:account 
+                                                   error:&error];
+    if (!password && error) {
+        NSLog(@"Error retrieving password: %@", error.localizedDescription);
+    }
+    return password;
+}
+```
+
+</CodeGroup>
+
+**Lines of Code Reduction: 50+ lines → 20 lines** 🎉
+
+### Accessibility Type Migration
+
+<Warning>
+**Critical Security Update**: The default accessibility type (`NULL`) is highly insecure. Explicitly set accessibility type during migration.
+</Warning>
+
+```objectivec
+// Set accessibility type globally (recommended)
+#if TARGET_OS_IPHONE
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+#endif
+
+// Now all future passwords use this accessibility type
+[SAMKeychain setPassword:password forService:service account:account];
+```
+
+**Recommended Accessibility Types:**
+
+- `kSecAttrAccessibleWhenUnlocked` - Most apps (requires device unlock)
+- `kSecAttrAccessibleAfterFirstUnlock` - Background apps that need access
+- `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` - Sensitive data (no iCloud sync)
+
+## Testing Your Migration
+
+After migrating, verify keychain operations:
+
+```objectivec
+- (void)testKeychainMigration {
+    NSString *testService = @"MigrationTest";
+    NSString *testAccount = @"test@example.com";
+    NSString *testPassword = @"SecurePassword123";
+    
+    // 1. Save password
+    NSError *error = nil;
+    BOOL success = [SAMKeychain setPassword:testPassword 
+                                 forService:testService 
+                                    account:testAccount 
+                                      error:&error];
+    NSAssert(success, @"Failed to save: %@", error);
+    
+    // 2. Retrieve password
+    NSString *retrieved = [SAMKeychain passwordForService:testService 
+                                                  account:testAccount 
+                                                    error:&error];
+    NSAssert([retrieved isEqualToString:testPassword], @"Password mismatch");
+    
+    // 3. Delete password
+    success = [SAMKeychain deletePasswordForService:testService 
+                                            account:testAccount 
+                                              error:&error];
+    NSAssert(success, @"Failed to delete: %@", error);
+    
+    // 4. Verify deletion
+    retrieved = [SAMKeychain passwordForService:testService 
+                                        account:testAccount 
+                                          error:&error];
+    NSAssert(retrieved == nil, @"Password should be deleted");
+    
+    NSLog(@"✅ Migration test passed!");
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Common issues and debugging tips
+  </Card>
+  <Card title="FAQ" icon="circle-question" href="/faq">
+    Frequently asked questions
+  </Card>
+</CardGroup>

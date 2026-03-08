@@ -1,0 +1,537 @@
+---
+title: "Error Handling"
+description: "Handle keychain errors gracefully and understand common error codes"
+icon: "triangle-exclamation"
+---
+
+## Overview
+
+Keychain operations can fail for various reasons: incorrect accessibility settings, missing items, device lock state, or invalid parameters. Proper error handling ensures your app responds gracefully to these situations.
+
+## Error Handling Approaches
+
+SAMKeychain provides two ways to handle errors:
+
+### Simple Approach: Return Value
+
+For basic operations, check the return value:
+
+```objectivec Return Value Checking
+// Setting a password
+BOOL success = [SAMKeychain setPassword:@"myPassword" 
+                             forService:@"com.myapp.MyApp" 
+                                account:@"user@example.com"];
+
+if (!success) {
+    NSLog(@"Failed to save password");
+    // Handle the error
+}
+
+// Deleting a password
+BOOL deleted = [SAMKeychain deletePasswordForService:@"com.myapp.MyApp" 
+                                             account:@"user@example.com"];
+
+if (!deleted) {
+    NSLog(@"Failed to delete password");
+}
+```
+
+### Detailed Approach: NSError
+
+For detailed error information, use the `error:` parameter variants:
+
+```objectivec NSError Handling
+NSError *error = nil;
+BOOL success = [SAMKeychain setPassword:@"myPassword" 
+                             forService:@"com.myapp.MyApp" 
+                                account:@"user@example.com" 
+                                  error:&error];
+
+if (!success && error) {
+    NSLog(@"Error code: %ld", (long)error.code);
+    NSLog(@"Error domain: %@", error.domain);
+    NSLog(@"Error description: %@", error.localizedDescription);
+    
+    // Handle specific error codes
+    if (error.code == errSecItemNotFound) {
+        // Item doesn't exist
+    }
+}
+```
+
+<Tip>
+  Always use the `error:` variants for production code to get detailed error information for debugging and user feedback.
+</Tip>
+
+## Error Codes
+
+### SAMKeychain Error Codes
+
+SAMKeychain defines its own error codes in the domain `com.samsoffes.samkeychain`:
+
+```objectivec SAMKeychain Error Domain
+extern NSString *const kSAMKeychainErrorDomain; // @"com.samsoffes.samkeychain"
+```
+
+| Error Code | Constant | Description |
+|-----------|----------|-------------|
+| -1001 | `SAMKeychainErrorBadArguments` | Invalid or missing required parameters |
+
+#### Bad Arguments Error
+
+This occurs when required parameters are missing or invalid:
+
+```objectivec Handling Bad Arguments
+NSError *error = nil;
+BOOL success = [SAMKeychain setPassword:nil  // Missing password
+                             forService:@"com.myapp.MyApp" 
+                                account:@"user@example.com" 
+                                  error:&error];
+
+if (!success && error.code == SAMKeychainErrorBadArguments) {
+    NSLog(@"Invalid parameters provided");
+    // Typically: service, account, or password is nil or empty
+}
+```
+
+<Warning>
+  `SAMKeychainErrorBadArguments` indicates a programming error. Check that you're providing non-nil values for service, account, and password.
+</Warning>
+
+### System Error Codes
+
+Most errors come from Apple's Security framework (defined in `SecBase.h`). These are returned with the `OSStatus` type:
+
+<AccordionGroup>
+  <Accordion title="errSecSuccess (0)" icon="check">
+    **Meaning**: Operation completed successfully
+    
+    ```objectivec
+    if (error.code == errSecSuccess || error == nil) {
+        // Success - no error occurred
+    }
+    ```
+    
+    <Info>
+      When successful, the error parameter is typically `nil`, but checking for `errSecSuccess` is also valid.
+    </Info>
+  </Accordion>
+
+  <Accordion title="errSecItemNotFound (-25300)" icon="magnifying-glass">
+    **Meaning**: The keychain item does not exist
+    
+    **Common causes**:
+    - Attempting to fetch a password that was never saved
+    - Wrong service or account name
+    - Item was already deleted
+    
+    ```objectivec Handling Item Not Found
+    NSError *error = nil;
+    NSString *password = [SAMKeychain passwordForService:@"com.myapp.MyApp" 
+                                                 account:@"user@example.com" 
+                                                   error:&error];
+    
+    if (error.code == errSecItemNotFound) {
+        NSLog(@"No password found for this account");
+        // This is often not an error - just means user hasn't logged in yet
+    }
+    ```
+    
+    <Note>
+      This is often expected behavior (e.g., on first launch) and doesn't always indicate a problem.
+    </Note>
+  </Accordion>
+
+  <Accordion title="errSecDuplicateItem (-25299)" icon="copy">
+    **Meaning**: An item with the same service and account already exists
+    
+    **When this occurs**:
+    - Manually adding items with Security framework APIs
+    - Race conditions in multi-threaded code
+    
+    ```objectivec Handling Duplicates
+    if (error.code == errSecDuplicateItem) {
+        NSLog(@"Item already exists");
+        // SAMKeychain normally handles this automatically by updating
+        // If you see this, it may indicate an unusual condition
+    }
+    ```
+    
+    <Info>
+      SAMKeychain automatically handles duplicates by updating existing items, so you should rarely see this error.
+    </Info>
+  </Accordion>
+
+  <Accordion title="errSecInteractionNotAllowed (-25308)" icon="lock">
+    **Meaning**: User interaction is required but not possible
+    
+    **Common causes**:
+    - Device is locked and item requires device unlock
+    - Accessibility setting prevents access in current state
+    - Background operation attempting to access protected item
+    
+    ```objectivec Handling Interaction Not Allowed
+    NSError *error = nil;
+    NSString *password = [SAMKeychain passwordForService:@"com.myapp.MyApp" 
+                                                 account:@"user@example.com" 
+                                                   error:&error];
+    
+    if (error.code == errSecInteractionNotAllowed) {
+        NSLog(@"Cannot access keychain item - device may be locked");
+        // Retry when device is unlocked or app is in foreground
+    }
+    ```
+    
+    <Warning>
+      This often indicates an accessibility mismatch. Review your accessibility settings (see [Accessibility](/concepts/accessibility)).
+    </Warning>
+  </Accordion>
+
+  <Accordion title="errSecAuthFailed (-25293)" icon="shield-xmark">
+    **Meaning**: Authentication or authorization failed
+    
+    **Common causes**:
+    - User denied access to keychain item
+    - Insufficient privileges
+    - Access control restrictions
+    
+    ```objectivec Handling Auth Failed
+    if (error.code == errSecAuthFailed) {
+        NSLog(@"Authorization failed");
+        // User may have denied access or security policy prevents access
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="errSecParam (-50)" icon="xmark-circle">
+    **Meaning**: One or more parameters passed to the function were invalid
+    
+    ```objectivec
+    if (error.code == errSecParam) {
+        NSLog(@"Invalid parameter");
+        // Check all parameters for correctness
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="errSecUnimplemented (-4)" icon="hammer">
+    **Meaning**: Function or operation not implemented
+    
+    ```objectivec
+    if (error.code == errSecUnimplemented) {
+        NSLog(@"Operation not implemented on this platform");
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="errSecNotAvailable (-25291)" icon="ban">
+    **Meaning**: No keychain is available
+    
+    **Common causes**:
+    - Keychain access not configured in provisioning profile
+    - Simulator issues
+    - Corrupted keychain
+    
+    ```objectivec
+    if (error.code == errSecNotAvailable) {
+        NSLog(@"Keychain is not available");
+        // Check provisioning profile and entitlements
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="errSecAllocate (-108)" icon="memory">
+    **Meaning**: Memory allocation failure
+    
+    ```objectivec
+    if (error.code == errSecAllocate) {
+        NSLog(@"Memory allocation failed");
+        // Severe system error - very rare
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="errSecDecode (-26275)" icon="file-code">
+    **Meaning**: Unable to decode the provided data
+    
+    ```objectivec
+    if (error.code == errSecDecode) {
+        NSLog(@"Failed to decode keychain data");
+        // Data may be corrupted
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Comprehensive Error Handling
+
+### Production-Ready Error Handling
+
+Here's a complete example of robust error handling:
+
+```objectivec Complete Error Handling
+- (BOOL)savePassword:(NSString *)password 
+          forAccount:(NSString *)account 
+               error:(NSError **)outError {
+    
+    // Validate input
+    if (!password || !account) {
+        if (outError) {
+            *outError = [NSError errorWithDomain:@"com.myapp.AppErrors" 
+                                            code:1001 
+                                        userInfo:@{
+                NSLocalizedDescriptionKey: @"Password and account are required"
+            }];
+        }
+        return NO;
+    }
+    
+    // Attempt to save
+    NSError *keychainError = nil;
+    BOOL success = [SAMKeychain setPassword:password 
+                                 forService:@"com.myapp.MyApp" 
+                                    account:account 
+                                      error:&keychainError];
+    
+    if (!success) {
+        NSLog(@"Keychain error: %@ (code: %ld)", 
+              keychainError.localizedDescription, 
+              (long)keychainError.code);
+        
+        // Handle specific errors
+        switch (keychainError.code) {
+            case SAMKeychainErrorBadArguments:
+                NSLog(@"Programming error: invalid arguments");
+                break;
+                
+            case errSecNotAvailable:
+                NSLog(@"Keychain not available - check entitlements");
+                break;
+                
+            case errSecInteractionNotAllowed:
+                NSLog(@"Device locked or accessibility prevents access");
+                break;
+                
+            default:
+                NSLog(@"Unexpected keychain error: %ld", (long)keychainError.code);
+                break;
+        }
+        
+        if (outError) {
+            *outError = keychainError;
+        }
+        return NO;
+    }
+    
+    return YES;
+}
+```
+
+### Using SAMKeychainQuery for Better Error Control
+
+`SAMKeychainQuery` provides more granular error information:
+
+```objectivec SAMKeychainQuery Error Handling
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"com.myapp.MyApp";
+query.account = @"user@example.com";
+query.password = @"myPassword";
+
+NSError *error = nil;
+BOOL success = [query save:&error];
+
+if (!success) {
+    // Check if it's a SAMKeychain error
+    if ([error.domain isEqualToString:kSAMKeychainErrorDomain]) {
+        if (error.code == SAMKeychainErrorBadArguments) {
+            NSLog(@"Missing required fields in query");
+        }
+    } else {
+        // System error from Security framework
+        NSLog(@"System error: %ld", (long)error.code);
+    }
+}
+```
+
+## Common Error Scenarios
+
+### Scenario 1: First Launch (Item Not Found)
+
+```objectivec First Launch
+NSError *error = nil;
+NSString *password = [SAMKeychain passwordForService:@"com.myapp.MyApp" 
+                                             account:@"user@example.com" 
+                                               error:&error];
+
+if (!password && error.code == errSecItemNotFound) {
+    // Expected on first launch - no password saved yet
+    NSLog(@"No saved password - this is the first launch");
+    // Prompt user to log in
+} else if (!password) {
+    // Unexpected error
+    NSLog(@"Error retrieving password: %@", error);
+}
+```
+
+### Scenario 2: Background Access Denied
+
+```objectivec Background Access
+// In a background task
+NSError *error = nil;
+NSString *token = [SAMKeychain passwordForService:@"com.myapp.MyApp" 
+                                          account:@"api-token" 
+                                            error:&error];
+
+if (error.code == errSecInteractionNotAllowed) {
+    NSLog(@"Cannot access token in background - device is locked");
+    // Schedule retry or use kSecAttrAccessibleAfterFirstUnlock
+}
+```
+
+<Tip>
+  If you need background access, use `kSecAttrAccessibleAfterFirstUnlock` instead of `kSecAttrAccessibleWhenUnlocked`.
+</Tip>
+
+### Scenario 3: User Feedback
+
+```objectivec User-Friendly Error Messages
+- (void)displayUserFriendlyError:(NSError *)error {
+    NSString *message;
+    
+    switch (error.code) {
+        case errSecItemNotFound:
+            message = @"Please log in to continue";
+            break;
+            
+        case errSecInteractionNotAllowed:
+            message = @"Please unlock your device to access this feature";
+            break;
+            
+        case errSecAuthFailed:
+            message = @"Access denied. Please check your permissions";
+            break;
+            
+        case errSecNotAvailable:
+            message = @"Unable to access secure storage. Please try again";
+            break;
+            
+        default:
+            message = @"An unexpected error occurred. Please try again";
+            break;
+    }
+    
+    UIAlertController *alert = [UIAlertController 
+        alertControllerWithTitle:@"Error" 
+                         message:message 
+                  preferredStyle:UIAlertControllerStyleAlert];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" 
+                                              style:UIAlertActionStyleDefault 
+                                            handler:nil]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
+}
+```
+
+## Debugging Tips
+
+### Enable Verbose Logging
+
+```objectivec Debug Logging
+#ifdef DEBUG
+- (void)logKeychainOperation:(NSString *)operation 
+                     success:(BOOL)success 
+                       error:(NSError *)error {
+    if (success) {
+        NSLog(@"✅ %@ succeeded", operation);
+    } else {
+        NSLog(@"❌ %@ failed", operation);
+        NSLog(@"   Domain: %@", error.domain);
+        NSLog(@"   Code: %ld", (long)error.code);
+        NSLog(@"   Description: %@", error.localizedDescription);
+    }
+}
+#endif
+```
+
+### Common Debugging Checks
+
+<Steps>
+  <Step title="Verify Parameters">
+    Ensure service and account are non-nil, non-empty strings
+  </Step>
+  <Step title="Check Accessibility">
+    Confirm accessibility is set appropriately for your use case
+  </Step>
+  <Step title="Review Entitlements">
+    Verify keychain access groups in your app's entitlements file
+  </Step>
+  <Step title="Test Device States">
+    Test with device locked, unlocked, and after reboot
+  </Step>
+  <Step title="Monitor Console">
+    Watch for Security framework messages in Console.app
+  </Step>
+</Steps>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card icon="check">
+    **Always use error parameters** in production code for detailed error information
+  </Card>
+  <Card icon="check">
+    **Handle errSecItemNotFound gracefully** - it's often expected, not an error
+  </Card>
+  <Card icon="check">
+    **Set appropriate accessibility** to avoid errSecInteractionNotAllowed
+  </Card>
+  <Card icon="check">
+    **Provide user-friendly messages** instead of exposing raw error codes
+  </Card>
+  <Card icon="xmark">
+    **Don't ignore errors** from keychain operations
+  </Card>
+  <Card icon="xmark">
+    **Don't assume success** - always check return values
+  </Card>
+  <Card icon="xmark">
+    **Don't crash on errors** - handle them gracefully
+  </Card>
+  <Card icon="xmark">
+    **Don't expose sensitive error details** to users
+  </Card>
+</CardGroup>
+
+## Error Reference Table
+
+| Error Code | Constant | Severity | Action |
+|-----------|----------|----------|--------|
+| 0 | `errSecSuccess` | Info | None - success |
+| -1001 | `SAMKeychainErrorBadArguments` | High | Fix code - check parameters |
+| -25300 | `errSecItemNotFound` | Low | Often expected - item doesn't exist |
+| -25299 | `errSecDuplicateItem` | Medium | Update instead of add |
+| -25308 | `errSecInteractionNotAllowed` | Medium | Check accessibility/device state |
+| -25293 | `errSecAuthFailed` | High | Check permissions/access control |
+| -25291 | `errSecNotAvailable` | High | Verify entitlements |
+| -50 | `errSecParam` | High | Invalid parameter |
+| -4 | `errSecUnimplemented` | Medium | Feature not supported |
+| -108 | `errSecAllocate` | Critical | System memory issue |
+| -26275 | `errSecDecode` | Medium | Data corruption |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Keychain Basics" icon="key" href="/concepts/keychain-basics">
+    Learn the fundamentals of keychain storage
+  </Card>
+  <Card title="Accessibility" icon="lock" href="/concepts/accessibility">
+    Understand accessibility options to prevent access errors
+  </Card>
+  <Card title="Advanced Queries" icon="sliders" href="/guides/advanced-queries">
+    Use SAMKeychainQuery for more control
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Solutions to common keychain issues
+  </Card>
+</CardGroup>

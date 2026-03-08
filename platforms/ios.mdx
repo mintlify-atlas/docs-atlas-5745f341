@@ -1,0 +1,118 @@
+---
+title: iOS Support
+description: iOS-specific features and configuration for SAMKeychain
+---
+
+## Minimum Deployment Target
+
+iOS 5.0 or later
+
+## Platform-Specific Features
+
+### Accessibility Types
+
+SAMKeychain provides iOS-specific accessibility control for keychain items through the `accessibilityType` methods (available on iOS 4.0 and later).
+
+```objc
+// Set accessibility type for all future passwords
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+
+// Get current accessibility type
+CFTypeRef accessibilityType = [SAMKeychain accessibilityType];
+```
+
+<Note>
+If you set the value to `NULL` (the default), the Keychain default will be used which is highly insecure. You should use at least `kSecAttrAccessibleAfterFirstUnlock` for background applications or `kSecAttrAccessibleWhenUnlocked` for all other applications.
+</Note>
+
+#### Available Accessibility Constants
+
+- `kSecAttrAccessibleWhenUnlocked` - Data can only be accessed while the device is unlocked
+- `kSecAttrAccessibleAfterFirstUnlock` - Data can be accessed after the first unlock following a device restart (recommended for background apps)
+- `kSecAttrAccessibleAlways` - Data is always accessible (not recommended for security reasons)
+- `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` - Data is accessible only when the device is unlocked and a passcode is set
+- `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` - Data is accessible only when unlocked and won't sync via iCloud
+- `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` - Same as AfterFirstUnlock but won't sync via iCloud
+- `kSecAttrAccessibleAlwaysThisDeviceOnly` - Always accessible but won't sync via iCloud
+
+### Access Groups
+
+Access groups allow sharing keychain items between apps from the same developer (available on iOS 3.0 and later).
+
+```objc
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyService";
+query.account = @"user@example.com";
+query.password = @"myPassword";
+query.accessGroup = @"TEAM_ID.com.example.shared";
+
+NSError *error = nil;
+[query save:&error];
+```
+
+<Note>
+Access groups do not work in the iOS Simulator. This feature is only available on physical devices. See SAMKeychainQuery.m:216-220 for implementation details.
+</Note>
+
+### iCloud Keychain Synchronization
+
+iCloud Keychain synchronization is available on iOS 7.0 and later.
+
+```objc
+// Check if synchronization is available at runtime
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyService";
+    query.account = @"user@example.com";
+    query.password = @"myPassword";
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    
+    NSError *error = nil;
+    [query save:&error];
+}
+```
+
+#### Synchronization Modes
+
+- `SAMKeychainQuerySynchronizationModeAny` - Query all items regardless of synchronization state
+- `SAMKeychainQuerySynchronizationModeNo` - Only local keychain items (not synchronized)
+- `SAMKeychainQuerySynchronizationModeYes` - Only synchronized keychain items
+
+<Note>
+The compile-time constant `SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE` indicates if synchronization is available at compile time. Use `[SAMKeychainQuery isSynchronizationAvailable]` to check at runtime. See SAMKeychainQuery.m:189-197 for implementation.
+</Note>
+
+## Basic Usage
+
+The standard keychain operations work the same as on other platforms:
+
+```objc
+// Save a password
+[SAMKeychain setPassword:@"myPassword" 
+              forService:@"MyService" 
+                 account:@"user@example.com"];
+
+// Retrieve a password
+NSString *password = [SAMKeychain passwordForService:@"MyService" 
+                                             account:@"user@example.com"];
+
+// Delete a password
+[SAMKeychain deletePasswordForService:@"MyService" 
+                              account:@"user@example.com"];
+```
+
+## Error Handling
+
+iOS includes platform-specific error codes. See the error handling section in SAMKeychainQuery.m:263-302 for iOS-specific error messages.
+
+```objc
+NSError *error = nil;
+BOOL success = [SAMKeychain setPassword:@"myPassword" 
+                             forService:@"MyService" 
+                                account:@"user@example.com" 
+                                  error:&error];
+
+if (!success) {
+    NSLog(@"Error saving password: %@", error.localizedDescription);
+}
+```

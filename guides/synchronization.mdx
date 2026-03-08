@@ -1,0 +1,556 @@
+---
+title: "iCloud Keychain Synchronization"
+description: "Sync passwords across devices with iCloud Keychain"
+---
+
+## Overview
+
+iCloud Keychain allows your app's passwords and credentials to sync automatically across a user's devices. SAMKeychain provides full support for this feature, giving you control over which items sync and which remain local.
+
+## Understanding Synchronization
+
+When enabled, iCloud Keychain synchronization:
+
+- Syncs keychain items across all devices signed into the same iCloud account
+- Happens automatically in the background
+- Is end-to-end encrypted by Apple
+- Works on iOS 7+, macOS 10.9+, tvOS, and watchOS
+
+<Note>
+Synchronization is optional and controlled on a per-item basis. You can choose which passwords sync and which stay on the device.
+</Note>
+
+## Checking Synchronization Availability
+
+Before using synchronization features, check if they're available:
+
+```objectivec
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    NSLog(@"iCloud Keychain synchronization is available");
+    // Use synchronization features
+} else {
+    NSLog(@"iCloud Keychain synchronization is not available");
+    // Fall back to local-only storage
+}
+
+#else
+    NSLog(@"Compiled without synchronization support");
+#endif
+```
+
+<Tip>
+Always check `isSynchronizationAvailable` at runtime, even if compiled with iOS 7+ SDK. Users may have iCloud Keychain disabled in Settings.
+</Tip>
+
+## Synchronization Modes
+
+SAMKeychain provides three synchronization modes:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `SAMKeychainQuerySynchronizationModeYes` | Item will sync to iCloud | User credentials that should be available on all devices |
+| `SAMKeychainQuerySynchronizationModeNo` | Item will never sync | Device-specific data or sensitive local credentials |
+| `SAMKeychainQuerySynchronizationModeAny` | Query matches both synced and non-synced items | Fetching items regardless of sync status |
+
+## Enabling Synchronization
+
+### Using SAMKeychainQuery
+
+The recommended approach for controlling synchronization:
+
+```objectivec
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp";
+    query.account = @"user@example.com";
+    query.password = @"myPassword";
+    
+    // Enable synchronization
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    
+    NSError *error = nil;
+    if ([query save:&error]) {
+        NSLog(@"Password saved and will sync to iCloud");
+    } else {
+        NSLog(@"Failed to save: %@", error);
+    }
+}
+
+#endif
+```
+
+### Storing Non-Syncing Passwords
+
+For device-specific credentials:
+
+```objectivec
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp";
+    query.account = @"deviceToken";
+    query.passwordData = deviceTokenData;
+    
+    // Disable synchronization - keep on this device only
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+    
+    [query save:nil];
+}
+
+#endif
+```
+
+## Fetching Synced Items
+
+### Fetching Any Item (Synced or Not)
+
+```objectivec
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user@example.com";
+
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    // Match both synced and non-synced items
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeAny;
+}
+#endif
+
+if ([query fetch:nil]) {
+    NSLog(@"Password: %@", query.password);
+}
+```
+
+### Fetching Only Synced Items
+
+```objectivec
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+
+NSArray *syncedItems = [query fetchAll:nil];
+NSLog(@"Found %lu synced items", (unsigned long)syncedItems.count);
+
+#endif
+```
+
+### Fetching Only Local Items
+
+```objectivec
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+
+NSArray *localItems = [query fetchAll:nil];
+NSLog(@"Found %lu local-only items", (unsigned long)localItems.count);
+
+#endif
+```
+
+## When to Use Sync vs. Non-Sync
+
+<Steps>
+  <Step title="Use synchronization for user credentials">
+    
+    Enable sync for passwords users expect to work on all their devices:
+    
+    ```objectivec
+    // User login credentials - should sync
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp";
+    query.account = userEmail;
+    query.password = userPassword;
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    [query save:nil];
+    ```
+    
+  </Step>
+  
+  <Step title="Disable sync for device-specific data">
+    
+    Keep device-specific data local:
+    
+    ```objectivec
+    // Device token - should NOT sync
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp";
+    query.account = @"deviceToken";
+    query.passwordData = pushToken;
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+    [query save:nil];
+    ```
+    
+  </Step>
+  
+  <Step title="Disable sync for highly sensitive data">
+    
+    For extra security, keep sensitive data on one device:
+    
+    ```objectivec
+    // Encryption keys - should NOT sync
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp";
+    query.account = @"encryptionKey";
+    query.passwordData = encryptionKeyData;
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+    [query save:nil];
+    ```
+    
+  </Step>
+</Steps>
+
+## Sync vs. ThisDeviceOnly Accessibility
+
+Don't confuse synchronization with accessibility attributes:
+
+```objectivec
+// These are DIFFERENT concepts:
+
+// 1. Accessibility (when the item can be accessed)
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlockedThisDeviceOnly];
+
+// 2. Synchronization (whether the item syncs to iCloud)
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+```
+
+**Accessibility with "ThisDeviceOnly"**: Item never syncs, regardless of sync mode
+
+```objectivec
+// This will NEVER sync because of accessibility type
+[SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlockedThisDeviceOnly];
+
+SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+query.service = @"MyApp";
+query.account = @"user";
+query.password = @"password";
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes; // Has no effect!
+[query save:nil];
+```
+
+<Warning>
+Items with `ThisDeviceOnly` accessibility attributes will never sync to iCloud, even if synchronization is enabled.
+</Warning>
+
+## Migrating Between Sync States
+
+### Converting Local Item to Synced
+
+```objectivec
+- (void)convertToSynced:(NSString *)account {
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    if (![SAMKeychainQuery isSynchronizationAvailable]) {
+        return;
+    }
+    
+    // Fetch existing local item
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = account;
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+    
+    NSError *error = nil;
+    if ([query fetch:&error]) {
+        NSString *password = query.password;
+        
+        // Delete local item
+        [query deleteItem:nil];
+        
+        // Re-save with sync enabled
+        SAMKeychainQuery *syncQuery = [[SAMKeychainQuery alloc] init];
+        syncQuery.service = @"MyApp";
+        syncQuery.account = account;
+        syncQuery.password = password;
+        syncQuery.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+        
+        if ([syncQuery save:&error]) {
+            NSLog(@"Converted to synced item");
+        }
+    }
+#endif
+}
+```
+
+### Converting Synced Item to Local
+
+```objectivec
+- (void)convertToLocal:(NSString *)account {
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    if (![SAMKeychainQuery isSynchronizationAvailable]) {
+        return;
+    }
+    
+    // Fetch synced item
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = account;
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    
+    if ([query fetch:nil]) {
+        NSString *password = query.password;
+        
+        // Delete synced item
+        [query deleteItem:nil];
+        
+        // Re-save as local only
+        SAMKeychainQuery *localQuery = [[SAMKeychainQuery alloc] init];
+        localQuery.service = @"MyApp";
+        localQuery.account = account;
+        localQuery.password = password;
+        localQuery.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+        
+        [localQuery save:nil];
+        NSLog(@"Converted to local-only item");
+    }
+#endif
+}
+```
+
+## Common Use Cases
+
+### User Preferences: Sync Toggle
+
+```objectivec
+- (void)savePassword:(NSString *)password 
+          forAccount:(NSString *)account
+         shouldSync:(BOOL)shouldSync {
+    
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp";
+    query.account = account;
+    query.password = password;
+    
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    if ([SAMKeychainQuery isSynchronizationAvailable] && shouldSync) {
+        query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    } else {
+        query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+    }
+#endif
+    
+    NSError *error = nil;
+    if (![query save:&error]) {
+        NSLog(@"Failed to save: %@", error);
+    }
+}
+
+// Usage
+BOOL userWantsSync = [[NSUserDefaults standardUserDefaults] 
+                     boolForKey:@"syncPasswordsToiCloud"];
+
+[self savePassword:password 
+        forAccount:account 
+       shouldSync:userWantsSync];
+```
+
+### Syncing OAuth Tokens
+
+```objectivec
+- (void)saveOAuthTokens:(NSDictionary *)tokens forAccount:(NSString *)account {
+    // Access token - short-lived, can sync
+    NSString *accessToken = tokens[@"access_token"];
+    if (accessToken) {
+        SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+        query.service = @"com.company.MyApp.oauth.access";
+        query.account = account;
+        query.password = accessToken;
+        
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+        if ([SAMKeychainQuery isSynchronizationAvailable]) {
+            query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+        }
+#endif
+        [query save:nil];
+    }
+    
+    // Refresh token - long-lived, definitely should sync
+    NSString *refreshToken = tokens[@"refresh_token"];
+    if (refreshToken) {
+        SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+        query.service = @"com.company.MyApp.oauth.refresh";
+        query.account = account;
+        query.password = refreshToken;
+        
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+        if ([SAMKeychainQuery isSynchronizationAvailable]) {
+            query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+        }
+#endif
+        [query save:nil];
+    }
+}
+```
+
+### App Extensions and Shared Credentials
+
+```objectivec
+// In your main app
+- (void)saveSharedCredentials:(NSString *)password forAccount:(NSString *)account {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp.shared";
+    query.account = account;
+    query.password = password;
+    
+#ifdef SAMKEYCHAIN_ACCESS_GROUP_AVAILABLE
+    // Share with app extension
+    query.accessGroup = @"com.company.shared";
+#endif
+    
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    // Also sync to other devices
+    if ([SAMKeychainQuery isSynchronizationAvailable]) {
+        query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    }
+#endif
+    
+    [query save:nil];
+}
+
+// In your app extension
+- (NSString *)fetchSharedPassword:(NSString *)account {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"com.company.MyApp.shared";
+    query.account = account;
+    
+#ifdef SAMKEYCHAIN_ACCESS_GROUP_AVAILABLE
+    query.accessGroup = @"com.company.shared";
+#endif
+    
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    if ([SAMKeychainQuery isSynchronizationAvailable]) {
+        query.synchronizationMode = SAMKeychainQuerySynchronizationModeAny;
+    }
+#endif
+    
+    if ([query fetch:nil]) {
+        return query.password;
+    }
+    return nil;
+}
+```
+
+### Audit Sync Status
+
+```objectivec
+- (void)auditSyncStatus {
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    if (![SAMKeychainQuery isSynchronizationAvailable]) {
+        NSLog(@"Sync not available");
+        return;
+    }
+    
+    // Get all synced items
+    SAMKeychainQuery *syncedQuery = [[SAMKeychainQuery alloc] init];
+    syncedQuery.service = @"com.company.MyApp";
+    syncedQuery.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    NSArray *syncedItems = [syncedQuery fetchAll:nil];
+    
+    // Get all local items
+    SAMKeychainQuery *localQuery = [[SAMKeychainQuery alloc] init];
+    localQuery.service = @"com.company.MyApp";
+    localQuery.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+    NSArray *localItems = [localQuery fetchAll:nil];
+    
+    NSLog(@"Synced items: %lu", (unsigned long)syncedItems.count);
+    NSLog(@"Local items: %lu", (unsigned long)localItems.count);
+    
+    // Log details
+    for (NSDictionary *item in syncedItems) {
+        NSLog(@"  Synced: %@", item[kSAMKeychainAccountKey]);
+    }
+    
+    for (NSDictionary *item in localItems) {
+        NSLog(@"  Local: %@", item[kSAMKeychainAccountKey]);
+    }
+#endif
+}
+```
+
+## Best Practices
+
+### Always Check Availability
+
+```objectivec
+// ✅ Good: Check before using sync features
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+if ([SAMKeychainQuery isSynchronizationAvailable]) {
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+}
+#endif
+
+// ❌ Bad: Assuming sync is available
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+```
+
+### Provide Fallback Behavior
+
+```objectivec
+- (void)savePasswordWithSync:(NSString *)password forAccount:(NSString *)account {
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = account;
+    query.password = password;
+    
+#ifdef SAMKEYCHAIN_SYNCHRONIZATION_AVAILABLE
+    if ([SAMKeychainQuery isSynchronizationAvailable]) {
+        query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+        NSLog(@"Saving with iCloud sync enabled");
+    } else {
+        NSLog(@"iCloud sync not available, saving locally");
+    }
+#else
+    NSLog(@"Built without sync support, saving locally");
+#endif
+    
+    [query save:nil];
+}
+```
+
+### Use SAMKeychainQuerySynchronizationModeAny for Fetching
+
+```objectivec
+// ✅ Good: Fetch regardless of sync status
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeAny;
+[query fetch:nil];
+
+// ❌ Bad: Might miss items with different sync status
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+[query fetch:nil]; // Won't find local-only items!
+```
+
+### Document Sync Decisions
+
+```objectivec
+// Good: Clear comments about sync decisions
+
+// Synced: User expects this to work on all devices
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+
+// Not synced: Device-specific push token
+query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Advanced Queries" icon="magnifying-glass" href="/guides/advanced-queries">
+    Learn more about SAMKeychainQuery features
+  </Card>
+  <Card title="Managing Accounts" icon="users" href="/guides/managing-accounts">
+    List and manage keychain accounts
+  </Card>
+  <Card title="Access Groups" icon="users-gear" href="/guides/advanced-queries#access-groups">
+    Share credentials between apps
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/samkeychainquery">
+    Complete SAMKeychainQuery documentation
+  </Card>
+</CardGroup>

@@ -1,0 +1,570 @@
+---
+title: "Frequently Asked Questions"
+description: "Common questions about using SAMKeychain in your apps"
+---
+
+## General Questions
+
+<AccordionGroup>
+  <Accordion title="When should I use SAMKeychain instead of raw Security.framework?">
+    **Use SAMKeychain when:**
+    - You need simple password/token storage
+    - You want readable, maintainable code
+    - You don't need advanced keychain features (certificates, keys, etc.)
+    - You want cross-platform support (iOS/macOS/tvOS/watchOS)
+
+    **Use Security.framework directly when:**
+    - You need certificate or cryptographic key management
+    - You need advanced query capabilities
+    - You need features SAMKeychain doesn't expose
+
+    For 90% of apps, SAMKeychain provides everything you need with much simpler code.
+
+    ```objectivec
+    // SAMKeychain: 3 lines
+    [SAMKeychain setPassword:@"secret" forService:@"MyApp" account:@"user"];
+    NSString *pw = [SAMKeychain passwordForService:@"MyApp" account:@"user"];
+    [SAMKeychain deletePasswordForService:@"MyApp" account:@"user"];
+
+    // Security.framework: 50+ lines of boilerplate
+    // (See migration guide for comparison)
+    ```
+  </Accordion>
+
+  <Accordion title="Which accessibility type should I use?">
+    Choose based on your app's needs:
+
+    **`kSecAttrAccessibleWhenUnlocked` (Recommended for most apps)**
+    - Most secure option
+    - Data accessible only when device is unlocked
+    - Use for: Passwords, auth tokens, sensitive user data
+
+    ```objectivec
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+    ```
+
+    **`kSecAttrAccessibleAfterFirstUnlock` (Background apps)**
+    - Data accessible after first unlock, even if device locks again
+    - Use for: Background sync tokens, notification tokens
+
+    ```objectivec
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+    ```
+
+    **`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (High security)**
+    - Most secure, never syncs to iCloud
+    - Use for: Extremely sensitive data, biometric-protected data
+
+    ```objectivec
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlockedThisDeviceOnly];
+    ```
+
+    **⚠️ Avoid:**
+    - `kSecAttrAccessibleAlways` - Deprecated and insecure
+    - `NULL` (default) - Uses system default, which is insecure
+
+    <Warning>
+    Always explicitly set an accessibility type. The default is insecure.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Can I share keychain items between multiple apps?">
+    **Yes**, using **access groups**. Both apps must:
+    1. Be signed with the same team ID
+    2. Have matching keychain access group entitlements
+    3. Use the same access group when storing/retrieving
+
+    **Setup:**
+
+    1. Add entitlement to both apps:
+    ```xml YourApp.entitlements
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.company.SharedKeychain</string>
+    </array>
+    ```
+
+    2. Use access groups in code:
+    ```objectivec
+    // App 1: Save to shared keychain
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"SharedService";
+    query.account = @"user@example.com";
+    query.password = @"sharedPassword";
+    query.accessGroup = @"TEAMID.com.company.SharedKeychain";
+    [query save:nil];
+
+    // App 2: Read from shared keychain
+    SAMKeychainQuery *query2 = [[SAMKeychainQuery alloc] init];
+    query2.service = @"SharedService";
+    query2.account = @"user@example.com";
+    query2.accessGroup = @"TEAMID.com.company.SharedKeychain";
+    [query2 fetch:nil];
+    NSString *password = query2.password; // "sharedPassword"
+    ```
+
+    <Note>
+    Access groups don't work in the iOS Simulator. Always test on real devices.
+    </Note>
+
+    **Common use cases:**
+    - Share login between main app and extension
+    - Share between multiple apps from same company
+    - Share between app and Today Widget/Watch app
+  </Accordion>
+
+  <Accordion title="Does SAMKeychain work with Swift?">
+    **Yes!** SAMKeychain works seamlessly with Swift:
+
+    ```swift
+    import SAMKeychain
+
+    // Save password
+    SAMKeychain.setPassword("myPassword", 
+                           forService: "MyApp", 
+                           account: "user@example.com")
+
+    // Retrieve password
+    if let password = SAMKeychain.password(forService: "MyApp", 
+                                           account: "user@example.com") {
+        print("Password: \(password)")
+    }
+
+    // Delete password
+    SAMKeychain.deletePassword(forService: "MyApp", 
+                              account: "user@example.com")
+    ```
+
+    **With error handling:**
+
+    ```swift
+    var error: NSError?
+    guard let password = SAMKeychain.password(forService: "MyApp", 
+                                              account: "user@example.com",
+                                              error: &error) else {
+        if let error = error {
+            print("Error: \(error.localizedDescription)")
+        }
+        return
+    }
+    ```
+
+    <Note>
+    The library includes `__attribute__((swift_error(none)))` for proper Swift error handling integration.
+    </Note>
+  </Accordion>
+
+  <Accordion title="How do I handle background access to the keychain?">
+    **Problem:** App needs to access keychain while running in background, but device might be locked.
+
+    **Solution:** Use `kSecAttrAccessibleAfterFirstUnlock`:
+
+    ```objectivec
+    // Set globally for all keychain items
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+
+    // Save token that will be accessible in background
+    [SAMKeychain setPassword:syncToken 
+                  forService:@"MyApp" 
+                     account:@"backgroundSync"];
+    ```
+
+    **When to use:**
+    - Background fetch
+    - Push notification handling
+    - Background audio/location apps
+    - VoIP apps
+
+    **Trade-off:** Slightly less secure than `kSecAttrAccessibleWhenUnlocked`, but still secure (data is encrypted at rest).
+
+    **Alternative for high security:** Store critical data with `WhenUnlocked`, less critical data with `AfterFirstUnlock`:
+
+    ```objectivec
+    // User password - high security
+    SAMKeychainQuery *passwordQuery = [[SAMKeychainQuery alloc] init];
+    passwordQuery.service = @"MyApp";
+    passwordQuery.account = @"userPassword";
+    passwordQuery.password = userPassword;
+    // Set per-item accessibility
+    #if TARGET_OS_IPHONE
+        [passwordQuery setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+    #endif
+
+    // API token - background access needed
+    SAMKeychainQuery *tokenQuery = [[SAMKeychainQuery alloc] init];
+    tokenQuery.service = @"MyApp";
+    tokenQuery.account = @"apiToken";
+    tokenQuery.password = apiToken;
+    #if TARGET_OS_IPHONE
+        [tokenQuery setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+    #endif
+    ```
+
+    <Warning>
+    If you use `WhenUnlocked` and try to access keychain while device is locked, you'll get `errSecInteractionNotAllowed` (-25308).
+    </Warning>
+  </Accordion>
+
+  <Accordion title="How secure is data stored in the keychain?">
+    **Very secure.** The keychain is one of the most secure storage options available:
+
+    **Security features:**
+    - ✅ **AES-256 encryption** at rest
+    - ✅ **Hardware-backed** on devices with Secure Enclave
+    - ✅ **Isolated** from app sandbox - survives app deletion
+    - ✅ **Protected** by device passcode/biometrics
+    - ✅ **Encrypted** in device backups
+
+    **What's protected:**
+    - Passwords and tokens
+    - Encryption keys
+    - Certificates
+    - Other sensitive data
+
+    **What's NOT protected:**
+    - Data becomes accessible if device is jailbroken/compromised
+    - Data in iCloud Keychain is encrypted but stored on Apple servers
+    - On older devices without Secure Enclave, encryption is software-based
+
+    **Best practices:**
+
+    ```objectivec
+    // 1. Always set explicit accessibility
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlocked];
+
+    // 2. Use ThisDeviceOnly for extremely sensitive data (no iCloud sync)
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlockedThisDeviceOnly];
+
+    // 3. Don't store unnecessary sensitive data
+    // Store auth token, not user's actual password
+
+    // 4. Clear keychain on logout
+    [SAMKeychain deletePasswordForService:@"MyApp" account:@"authToken"];
+    ```
+
+    <Note>
+    The keychain is appropriate for passwords, tokens, and small secrets. For large amounts of sensitive data, use encrypted files with keychain-stored encryption keys.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Technical Questions
+
+<AccordionGroup>
+  <Accordion title="Can I store binary data, not just strings?">
+    **Yes!** Use `passwordData` for binary data:
+
+    ```objectivec
+    // Store binary data (encryption keys, tokens, etc.)
+    NSData *secretKey = ...; // Some binary data
+    [SAMKeychain setPasswordData:secretKey 
+                      forService:@"MyApp" 
+                         account:@"encryptionKey"];
+
+    // Retrieve binary data
+    NSData *retrievedKey = [SAMKeychain passwordDataForService:@"MyApp" 
+                                                       account:@"encryptionKey"];
+    ```
+
+    **Store any NSCoding-compliant object:**
+
+    ```objectivec
+    // Store complex objects using passwordObject
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = @"userSettings";
+
+    NSDictionary *settings = @{
+        @"theme": @"dark",
+        @"notifications": @YES
+    };
+    query.passwordObject = settings; // Automatically archived with NSKeyedArchiver
+    [query save:nil];
+
+    // Retrieve object
+    SAMKeychainQuery *fetchQuery = [[SAMKeychainQuery alloc] init];
+    fetchQuery.service = @"MyApp";
+    fetchQuery.account = @"userSettings";
+    [fetchQuery fetch:nil];
+    NSDictionary *retrieved = fetchQuery.passwordObject;
+    ```
+
+    <Warning>
+    Keychain items are size-limited (typically 2-4 KB per item). Don't store large data like images or documents.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="How does iCloud Keychain synchronization work?">
+    **Requirements:**
+    - iOS 7+ or macOS 10.9+
+    - User must be signed in to iCloud
+    - iCloud Keychain must be enabled in Settings
+
+    **Enable sync:**
+
+    ```objectivec
+    // Check if available
+    if ([SAMKeychainQuery isSynchronizationAvailable]) {
+        SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+        query.service = @"MyApp";
+        query.account = @"user@example.com";
+        query.password = @"syncedPassword";
+        query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+        [query save:nil];
+    }
+    ```
+
+    **Synchronization modes:**
+
+    ```objectivec
+    // Never sync to iCloud
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeNo;
+
+    // Always sync to iCloud
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+
+    // Fetch both synced and non-synced items
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeAny;
+    ```
+
+    **When to use:**
+    - ✅ Login credentials (sync across user's devices)
+    - ✅ API tokens (if same token works on all devices)
+    - ❌ Device-specific secrets
+    - ❌ Extremely sensitive data (use `ThisDeviceOnly` accessibility)
+
+    **Gotchas:**
+    - Sync doesn't work in iOS Simulator
+    - Items saved with sync can't be fetched without specifying sync mode
+    - Sync timing is controlled by iOS, not your app
+
+    <Note>
+    Use `synchronizationMode = SAMKeychainQuerySynchronizationModeAny` when fetching if you're not sure whether the item was saved with sync enabled.
+    </Note>
+  </Accordion>
+
+  <Accordion title="What happens to keychain data when app is deleted?">
+    **Behavior varies by platform:**
+
+    **iOS:**
+    - Keychain items are **usually deleted** when app is uninstalled
+    - Items may **persist** if:
+      - App installed via TestFlight
+      - App installed via Enterprise distribution
+      - Items use iCloud Keychain sync
+    - Items in shared access groups persist if other apps in group remain
+
+    **macOS:**
+    - Keychain items **always persist** after app deletion
+    - User must manually delete via Keychain Access.app
+    - This is by design for security/data recovery
+
+    **tvOS/watchOS:**
+    - Similar to iOS behavior
+
+    **Implications for development:**
+
+    ```objectivec
+    // On first launch, keychain might contain old data
+    - (void)checkForExistingCredentials {
+        NSString *existing = [SAMKeychain passwordForService:@"MyApp" 
+                                                     account:@"user"];
+        if (existing) {
+            // Decide: reuse existing credentials or clear them?
+            // For most apps: reuse (better UX - user stays logged in)
+            // For high-security apps: clear and require re-login
+        }
+    }
+    ```
+
+    **Clear all keychain data on logout:**
+
+    ```objectivec
+    - (void)clearAllKeychainData {
+        NSArray *accounts = [SAMKeychain accountsForService:@"MyApp"];
+        for (NSDictionary *account in accounts) {
+            NSString *accountName = account[kSAMKeychainAccountKey];
+            [SAMKeychain deletePasswordForService:@"MyApp" account:accountName];
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Can I use SAMKeychain in an app extension?">
+    **Yes**, but with considerations:
+
+    **1. Share keychain between app and extension using access groups:**
+
+    ```objectivec
+    // In both app and extension, use same access group
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = @"authToken";
+    query.accessGroup = @"TEAMID.com.company.MyApp"; // Same for both
+    [query fetch:nil];
+    ```
+
+    **2. Add entitlement to both targets:**
+
+    ```xml App.entitlements & Extension.entitlements
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.company.MyApp</string>
+    </array>
+    ```
+
+    **3. Consider accessibility for background extensions:**
+
+    ```objectivec
+    // For extensions that run in background (Today Widget, Share Extension)
+    // Use AfterFirstUnlock, not WhenUnlocked
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleAfterFirstUnlock];
+    ```
+
+    **Extension types and keychain access:**
+
+    | Extension Type | Keychain Access | Notes |
+    |---------------|-----------------|-------|
+    | Today Widget | ✅ Full access | Use access groups to share with app |
+    | Share Extension | ✅ Full access | Use access groups to share with app |
+    | Keyboard Extension | ⚠️ Restricted | Limited keychain access for security |
+    | Watch App | ✅ Full access | Has its own keychain, use iCloud sync or Handoff |
+    | Action Extension | ✅ Full access | Use access groups to share with app |
+
+    <Warning>
+    Keyboard extensions have restricted keychain access by design. See [Apple's documentation](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/CustomKeyboard.html) for details.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="How do I migrate keychain data to a new device?">
+    **Keychain data is automatically migrated:**
+
+    **1. Via iCloud Keychain (if enabled):**
+    - Items saved with `synchronizationMode = SAMKeychainQuerySynchronizationModeYes`
+    - Automatically sync to new device when user signs in to iCloud
+
+    ```objectivec
+    // Save with iCloud sync
+    SAMKeychainQuery *query = [[SAMKeychainQuery alloc] init];
+    query.service = @"MyApp";
+    query.account = @"user@example.com";
+    query.password = @"secret";
+    query.synchronizationMode = SAMKeychainQuerySynchronizationModeYes;
+    [query save:nil];
+    // ✅ Automatically appears on user's other devices
+    ```
+
+    **2. Via encrypted iOS backup:**
+    - All keychain items (except `ThisDeviceOnly`) are included in encrypted backups
+    - Restored when user restores from backup on new device
+
+    **3. Items that DON'T migrate:**
+    - `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+    - `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`
+    - Any accessibility type ending in `ThisDeviceOnly`
+
+    ```objectivec
+    // This will NOT sync or backup
+    [SAMKeychain setAccessibilityType:kSecAttrAccessibleWhenUnlockedThisDeviceOnly];
+    [SAMKeychain setPassword:@"device-specific" forService:@"MyApp" account:@"local"];
+    ```
+
+    **Manual migration approach:**
+
+    If you need custom migration logic:
+
+    ```objectivec
+    // Export keychain data securely
+    - (NSDictionary *)exportKeychainData {
+        NSMutableDictionary *exported = [NSMutableDictionary dictionary];
+        NSArray *accounts = [SAMKeychain accountsForService:@"MyApp"];
+        
+        for (NSDictionary *account in accounts) {
+            NSString *accountName = account[kSAMKeychainAccountKey];
+            NSString *password = [SAMKeychain passwordForService:@"MyApp" 
+                                                         account:accountName];
+            if (password) {
+                exported[accountName] = password;
+            }
+        }
+        
+        return exported;
+    }
+
+    // Import on new device (via your own secure channel)
+    - (void)importKeychainData:(NSDictionary *)data {
+        for (NSString *account in data) {
+            NSString *password = data[account];
+            [SAMKeychain setPassword:password forService:@"MyApp" account:account];
+        }
+    }
+    ```
+
+    <Tip>
+    For most apps, using iCloud Keychain synchronization is the easiest approach. Just set `synchronizationMode = SAMKeychainQuerySynchronizationModeYes` when saving.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Does SAMKeychain support Touch ID / Face ID authentication?">
+    **SAMKeychain doesn't directly expose biometric authentication**, but you can layer it on top:
+
+    **Approach 1: Use `SecAccessControlCreateWithFlags`** (advanced):
+
+    SAMKeychain doesn't expose this, so you'd need to use Security.framework directly for items that require biometric authentication.
+
+    **Approach 2: Add biometric check before keychain access:**
+
+    ```objectivec
+    #import <LocalAuthentication/LocalAuthentication.h>
+
+    - (void)getPasswordWithBiometrics:(void (^)(NSString *password))completion {
+        LAContext *context = [[LAContext alloc] init];
+        NSError *error = nil;
+        
+        if ([context canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics 
+                                error:&error]) {
+            [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
+                    localizedReason:@"Authenticate to access your password"
+                              reply:^(BOOL success, NSError *authError) {
+                if (success) {
+                    // Biometric authentication succeeded
+                    NSString *password = [SAMKeychain passwordForService:@"MyApp" 
+                                                                 account:@"user"];
+                    completion(password);
+                } else {
+                    // Authentication failed
+                    completion(nil);
+                }
+            }];
+        } else {
+            // Biometrics not available
+            completion(nil);
+        }
+    }
+    ```
+
+    **Approach 3: Store a separate encryption key in keychain:**
+
+    ```objectivec
+    // 1. Generate encryption key, protect it with biometrics using Security.framework
+    // 2. Encrypt your sensitive data with this key
+    // 3. Store encrypted data in keychain (or elsewhere)
+    // 4. User must authenticate to access the encryption key
+    ```
+
+    <Note>
+    For true hardware-backed biometric protection, you'll need to use Security.framework's `kSecAccessControlBiometryAny` flag, which SAMKeychain doesn't expose.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Still have questions?
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Debug common issues and errors
+  </Card>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/soffes/SAMKeychain/issues">
+    Search existing issues or ask a question
+  </Card>
+</CardGroup>
