@@ -1,0 +1,92 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "SAMKeychain",
+  "projectDescription": "Simple Objective-C wrapper for the keychain that works on Mac and iOS",
+  "theme": "palm",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/keychain-basics",
+          "concepts/accessibility",
+          "concepts/error-handling"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/samkeychain",
+          "api/samkeychainquery"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/storing-passwords",
+          "guides/retrieving-passwords",
+          "guides/managing-accounts",
+          "guides/advanced-queries",
+          "guides/synchronization"
+        ]
+      },
+      {
+        "group": "Platform Support",
+        "pages": [
+          "platforms/ios",
+          "platforms/macos",
+          "platforms/tvos",
+          "platforms/watchos"
+        ]
+      },
+      {
+        "group": "Migration & Support",
+        "pages": [
+          "migration",
+          "troubleshooting",
+          "faq"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Simple class methods for common keychain operations",
+    "Support for iOS, macOS, tvOS, and watchOS",
+    "Secure password storage with configurable accessibility",
+    "Query-based interface for advanced operations",
+    "iCloud Keychain synchronization support",
+    "Access group support for sharing between apps",
+    "Error handling with detailed error codes"
+  ],
+  "publicApiSurface": [
+    "SAMKeychain.passwordForService:account:",
+    "SAMKeychain.setPassword:forService:account:",
+    "SAMKeychain.deletePasswordForService:account:",
+    "SAMKeychain.allAccounts",
+    "SAMKeychain.accountsForService:",
+    "SAMKeychain.setAccessibilityType:",
+    "SAMKeychainQuery.save:",
+    "SAMKeychainQuery.fetch:",
+    "SAMKeychainQuery.fetchAll:",
+    "SAMKeychainQuery.deleteItem:",
+    "SAMKeychainQuery.account",
+    "SAMKeychainQuery.service",
+    "SAMKeychainQuery.password",
+    "SAMKeychainQuery.passwordData",
+    "SAMKeychainQuery.passwordObject",
+    "SAMKeychainQuery.label",
+    "SAMKeychainQuery.accessGroup",
+    "SAMKeychainQuery.synchronizationMode"
+  ]
+}
